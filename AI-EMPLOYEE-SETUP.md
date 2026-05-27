@@ -306,44 +306,147 @@ launchctl load ~/Library/LaunchAgents/com.aiemployee.plist
 
 ---
 
-## 권장 모델 (이 PC 전용)
+## 권장 모델 (이 PC 전용 · 2026년 최신)
 
-> VRAM 16GB + RAM 80GB. 에이전트(도구 호출·추론·미팅)에는 **Qwen2.5 계열**이 강함.
+> VRAM 16GB + RAM 80GB. AI 직원(추론·도구 호출·자율 미팅)에는 아래 모델들이 2026년 현재 최강 조합.
 
-| 용도 | 모델 | 양자화 | 크기 | GPU 적재 | 속도 | 비고 |
-|------|------|--------|------|----------|------|------|
-| **메인 추천** ⭐ | Qwen2.5 14B Instruct | Q5_K_M | ~10GB | 100% GPU | 빠름 | 추론·툴콜 우수, VRAM에 완전 적재 |
-| 고속/경량 | Llama 3.1 8B Instruct | Q6_K | ~6.5GB | 100% GPU | 매우빠름 | 응답성 최고, 동시 다중요청 |
-| **고품질** | Qwen2.5 32B Instruct | Q4_K_M | ~20GB | 16GB GPU + RAM | 중간 | 판단력↑, 하이브리드 오프로드 |
-| 최고품질 | Llama 3.3 70B Instruct | Q4_K_M | ~40GB | 16GB GPU + RAM | 느림 | 80GB RAM 덕에 구동 가능 |
+---
 
-### 추천 구성 (이중 모델)
-- **상시 가동**: Qwen2.5 14B Q5_K_M (포트 11434) — 일상 업무·텔레그램 응답
-- **고난도 작업**: Qwen2.5 32B Q4_K_M (필요시 기동) — 중요한 의사결정·미팅
+### 🏆 모델 한눈에 비교
 
-### 다운로드 명령
-```bash
-pip3 install -U "huggingface_hub[cli]"
+| 순위 | 모델 | 양자화 | VRAM | GPU 적재 | 속도 | AI 직원 적합도 |
+|------|------|--------|------|----------|------|----------------|
+| **1위** ⭐ | **GPT-OSS 20B** (OpenAI 오픈소스) | Q5_K_M | ~13.7GB | **100% GPU** | ~35-45 t/s | ★★★★★ 추론·툴콜 최강, o3-mini 수준 |
+| **2위** | **Qwen3 14B** | Q6_K | ~12GB | **100% GPU** | ~40-50 t/s | ★★★★★ 에이전트·툴콜 1위 오픈소스 |
+| **3위** | **Qwen3.5-35B-A3B** (MoE) | Q4_K_M | ~7GB | **100% GPU** | ~55-70 t/s | ★★★★☆ 실제 활성 3B, 매우 빠름 |
+| **4위** | Qwen3 32B | Q4_K_M | ~20GB | GPU 16 + RAM | ~20-28 t/s | ★★★★★ 최고 품질, 판단력 최강 |
+| **5위** | Gemma 4 26B MoE (A4B) | Q4_K_M | ~7GB | **100% GPU** | ~60-75 t/s | ★★★★☆ Google, 추론 우수 |
+| **코딩 전용** | Qwen3-Coder-30B-A3B | Q4_K_M | ~7GB | **100% GPU** | ~50-65 t/s | ★★★★★ 코드 생성 특화 |
 
-# 메인 추천 모델
-huggingface-cli download bartowski/Qwen2.5-14B-Instruct-GGUF \
-  Qwen2.5-14B-Instruct-Q5_K_M.gguf --local-dir ~/ai-employee/models
+---
 
-# 고품질 모델 (선택)
-huggingface-cli download bartowski/Qwen2.5-32B-Instruct-GGUF \
-  Qwen2.5-32B-Instruct-Q4_K_M.gguf --local-dir ~/ai-employee/models
+### 📌 AI 직원 구성 추천 (이중 모델)
+
+```
+┌─────────────────────────────────────────────────────┐
+│  상시 가동 (포트 11434)                               │
+│  GPT-OSS 20B Q5_K_M  OR  Qwen3 14B Q6_K            │
+│  → 텔레그램 응답, 일상 업무, 빠른 판단              │
+├─────────────────────────────────────────────────────┤
+│  고난도 작업 시 기동 (포트 11435)                     │
+│  Qwen3 32B Q4_K_M                                   │
+│  → 중요 의사결정, AI 직원 간 미팅, 전략 수립         │
+└─────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 예상 성능 (Qwen2.5 14B Q5_K_M)
+### 🥇 1위: GPT-OSS 20B — OpenAI 오픈소스 첫 번째 모델
 
 | 항목 | 값 |
 |------|-----|
-| 생성 속도 | ~30-45 tokens/sec |
-| VRAM 사용 | ~10GB / 16GB |
-| 동시 사용자 | 3-4명 |
-| 모델 로딩 | ~6초 |
+| 출처 | OpenAI (Apache 2.0) — 2026년 공개 |
+| 특징 | **o3-mini 수준의 추론 성능** · 16GB VRAM에 딱 맞게 설계됨 |
+| 생성 속도 | ~35-45 t/s (AMD Radeon 16GB 기준) |
+| VRAM | ~13.7GB → 16GB에 완전 적재 |
+| 도구 호출 | ✅ 강력 |
+| AMD 공식 지원 | ✅ AMD가 공식 Radeon 가이드 발행 |
+| GGUF 출처 | `unsloth/gpt-oss-20b-GGUF` |
+
+```bash
+huggingface-cli download unsloth/gpt-oss-20b-GGUF \
+  gpt-oss-20b-Q5_K_M.gguf --local-dir ~/ai-employee/models
+```
+
+---
+
+### 🥈 2위: Qwen3 14B — 에이전트·툴콜 오픈소스 1위
+
+| 항목 | 값 |
+|------|-----|
+| 출처 | Alibaba (Apache 2.0) |
+| 특징 | **Thinking 모드 / Non-thinking 모드** 전환 가능, 툴콜 최강 |
+| 생성 속도 | ~40-50 t/s |
+| VRAM | ~12GB → 16GB에 완전 적재 |
+| 컨텍스트 | 기본 32K · YaRN으로 131K까지 확장 |
+| 도구 호출 | ✅ 오픈소스 최고 수준 |
+| GGUF 출처 | `bartowski/Qwen_Qwen3-14B-GGUF` |
+
+```bash
+huggingface-cli download bartowski/Qwen_Qwen3-14B-GGUF \
+  Qwen3-14B-Q6_K.gguf --local-dir ~/ai-employee/models
+```
+
+---
+
+### 🥉 3위: Qwen3.5-35B-A3B (MoE) — 속도/품질 극단적 균형
+
+| 항목 | 값 |
+|------|-----|
+| 출처 | Alibaba (Apache 2.0) |
+| 특징 | 35B 전체 중 **3B만 활성화** → 7B급 속도에 35B급 품질 |
+| 생성 속도 | ~55-70 t/s (가장 빠름) |
+| VRAM | ~7GB → 여유 VRAM으로 긴 컨텍스트 처리 |
+| GGUF 출처 | `unsloth/Qwen3.5-35B-A3B-GGUF` |
+
+```bash
+huggingface-cli download unsloth/Qwen3.5-35B-A3B-GGUF \
+  Qwen3.5-35B-A3B-Q4_K_M.gguf --local-dir ~/ai-employee/models
+```
+
+---
+
+### 4위: Qwen3 32B — 최고 품질 (하이브리드)
+
+```bash
+huggingface-cli download bartowski/Qwen_Qwen3-32B-GGUF \
+  Qwen3-32B-Q4_K_M.gguf --local-dir ~/ai-employee/models
+# ~20GB → GPU 16GB + RAM 4GB 자동 하이브리드
+```
+
+---
+
+### 코딩 전용: Qwen3-Coder-30B-A3B
+
+```bash
+huggingface-cli download unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF \
+  Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf --local-dir ~/ai-employee/models
+# 활성 파라미터 3B → VRAM ~7GB, 코드 생성 특화
+```
+
+---
+
+### 전체 다운로드 스크립트
+
+```bash
+pip3 install -U "huggingface_hub[cli]"
+mkdir -p ~/ai-employee/models
+
+# ① 메인 상시 가동 (추천)
+huggingface-cli download unsloth/gpt-oss-20b-GGUF \
+  gpt-oss-20b-Q5_K_M.gguf --local-dir ~/ai-employee/models
+
+# ② 툴콜 에이전트 특화
+huggingface-cli download bartowski/Qwen_Qwen3-14B-GGUF \
+  Qwen3-14B-Q6_K.gguf --local-dir ~/ai-employee/models
+
+# ③ 고품질 의사결정 (선택)
+huggingface-cli download bartowski/Qwen_Qwen3-32B-GGUF \
+  Qwen3-32B-Q4_K_M.gguf --local-dir ~/ai-employee/models
+```
+
+> ⚠️ **저장공간 주의**: 3종 합산 ~46GB 필요. 최소 60GB 확보 후 다운로드 권장.
+
+---
+
+## 예상 성능 비교 (AMD Radeon Pro 5700 XT 16GB + Metal)
+
+| 모델 | 생성 속도 | VRAM 사용 | 첫 토큰 지연 | AI 직원 평가 |
+|------|----------|----------|------------|-------------|
+| GPT-OSS 20B Q5_K_M | ~35-45 t/s | 13.7GB | 빠름 | 추론+툴콜 균형 최고 |
+| Qwen3 14B Q6_K | ~40-50 t/s | 12GB | 매우 빠름 | 에이전트 툴콜 1위 |
+| Qwen3.5-35B-A3B Q4 | ~55-70 t/s | 7GB | 최고 빠름 | 응답성 최고 |
+| Qwen3 32B Q4_K_M | ~20-28 t/s | 16+RAM | 중간 | 판단 품질 최고 |
 
 ---
 
