@@ -1,4 +1,6 @@
-pyautogen>=0.2.35
+# ag2 = AutoGen 클래식 API(import autogen)를 유지하는 활성 포크.
+# openai extra 로 로컬 llama.cpp(OpenAI 호환) 엔드포인트에 연결.
+ag2[openai]>=0.7.0
 chromadb>=0.5.0
 fastapi>=0.111.0
 uvicorn[standard]>=0.30.0
