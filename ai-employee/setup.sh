@@ -151,13 +151,24 @@ fi
 # ── Step 7: 모델 다운로드 ─────────────────────────────────────────────────────
 info "Step 7: AI 모델 다운로드"
 mkdir -p "$DIR/models"
-pip install -q "huggingface_hub[cli]"
+
+# huggingface 다운로드 명령어 감지 (hf 또는 huggingface-cli)
+pip install -q "huggingface_hub" 2>/dev/null || true
+if command -v hf &>/dev/null; then
+    HF_DL="hf download"
+elif command -v huggingface-cli &>/dev/null; then
+    HF_DL="huggingface-cli download"
+else
+    pip install -q "huggingface_hub[cli]" 2>/dev/null || pip install -q huggingface_hub
+    HF_DL="hf download"
+fi
+echo "  다운로드 명령어: $HF_DL"
 
 echo ""
 if [ "$AUTO_MODEL" = "small" ]; then
     echo "  ℹ️  여유 공간 ${AVAIL}GB → Qwen3 14B Q4_K_M (~9GB) 자동 선택"
     info "  Qwen3 14B 다운로드 중... (9GB, 10-20분 소요)"
-    huggingface-cli download bartowski/Qwen_Qwen3-14B-GGUF \
+    $HF_DL bartowski/Qwen_Qwen3-14B-GGUF \
         Qwen3-14B-Q4_K_M.gguf \
         --local-dir "$DIR/models"
     MODEL_FILE="$DIR/models/Qwen3-14B-Q4_K_M.gguf"
@@ -166,7 +177,7 @@ if [ "$AUTO_MODEL" = "small" ]; then
 else
     echo "  ℹ️  여유 공간 ${AVAIL}GB → GPT-OSS 20B Q5_K_M (~13.7GB) 자동 선택"
     info "  GPT-OSS 20B 다운로드 중... (13.7GB, 15-30분 소요)"
-    huggingface-cli download unsloth/gpt-oss-20b-GGUF \
+    $HF_DL unsloth/gpt-oss-20b-GGUF \
         gpt-oss-20b-Q5_K_M.gguf \
         --local-dir "$DIR/models"
     MODEL_FILE="$DIR/models/gpt-oss-20b-Q5_K_M.gguf"
