@@ -21,11 +21,13 @@ log = logging.getLogger(__name__)
 
 def auth(func):
     """권한 없는 사용자 차단 데코레이터."""
-    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    async def wrapper(*args, **kwargs):
+        # 핸들러가 메서드면 args=(self, update, context), 함수면 args=(update, context)
+        update = next(a for a in args if isinstance(a, Update))
         if update.effective_user.id not in AUTHORIZED_USERS:
             await update.message.reply_text("⛔ 접근 권한이 없습니다.")
             return
-        return await func(update, context)
+        return await func(*args, **kwargs)
     return wrapper
 
 
