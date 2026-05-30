@@ -40,23 +40,19 @@ if [ "$AVAIL" -lt 14 ]; then
     echo "  정리 후 여유 공간: ${AVAIL}GB"
 fi
 
-if [ "$AVAIL" -lt 14 ]; then
+if [ "$AVAIL" -lt 7 ]; then
     echo ""
     echo "  ⚠️  여유 공간 부족 (${AVAIL}GB). 아래에서 큰 파일을 확인하세요:"
-    echo ""
     du -sh ~/Downloads/* 2>/dev/null | sort -hr | head -10 | sed 's/^/     /'
-    echo ""
-    echo "  Downloads 폴더 정리 후 setup.sh 를 다시 실행하세요."
-    err "저장 공간 부족 (${AVAIL}GB / 최소 14GB 필요)"
+    err "저장 공간 부족 (${AVAIL}GB / 최소 7GB 필요)"
 fi
 
-# 공간에 따라 자동으로 적합한 모델 선택
-if [ "$AVAIL" -lt 20 ]; then
-    AUTO_MODEL="small"   # Qwen3 14B ~12GB
-else
-    AUTO_MODEL="large"   # GPT-OSS 20B ~13.7GB
+# 공간에 따라 자동으로 최적 모델 선택
+if   [ "$AVAIL" -ge 20 ]; then AUTO_MODEL="large"   # GPT-OSS 20B  ~13.7GB
+elif [ "$AVAIL" -ge 14 ]; then AUTO_MODEL="medium"  # Qwen3 14B    ~9GB
+else                            AUTO_MODEL="small"   # Qwen3 8B     ~5GB
 fi
-ok "저장 공간 확인 완료 (${AVAIL}GB 여유)"
+ok "저장 공간 확인 완료 (${AVAIL}GB 여유 → ${AUTO_MODEL} 모델 선택)"
 
 # ── Step 1: Xcode Command Line Tools ────────────────────────────────────────
 info "Step 1: Xcode Command Line Tools 확인"
@@ -165,25 +161,36 @@ fi
 echo "  다운로드 명령어: $HF_DL"
 
 echo ""
-if [ "$AUTO_MODEL" = "small" ]; then
-    echo "  ℹ️  여유 공간 ${AVAIL}GB → Qwen3 14B Q4_K_M (~9GB) 자동 선택"
-    info "  Qwen3 14B 다운로드 중... (9GB, 10-20분 소요)"
-    $HF_DL bartowski/Qwen_Qwen3-14B-GGUF \
-        Qwen3-14B-Q4_K_M.gguf \
-        --local-dir "$DIR/models"
-    MODEL_FILE="$DIR/models/Qwen3-14B-Q4_K_M.gguf"
-    sed -i '' "s|MODEL_MAIN = .*|MODEL_MAIN = \"$MODEL_FILE\"|" "$DIR/config.py"
-    ok "Qwen3 14B Q4_K_M 다운로드 완료"
-else
-    echo "  ℹ️  여유 공간 ${AVAIL}GB → GPT-OSS 20B Q5_K_M (~13.7GB) 자동 선택"
-    info "  GPT-OSS 20B 다운로드 중... (13.7GB, 15-30분 소요)"
-    $HF_DL unsloth/gpt-oss-20b-GGUF \
-        gpt-oss-20b-Q5_K_M.gguf \
-        --local-dir "$DIR/models"
-    MODEL_FILE="$DIR/models/gpt-oss-20b-Q5_K_M.gguf"
-    sed -i '' "s|MODEL_MAIN = .*|MODEL_MAIN = \"$MODEL_FILE\"|" "$DIR/config.py"
-    ok "GPT-OSS 20B 다운로드 완료"
-fi
+case "$AUTO_MODEL" in
+    small)
+        echo "  ℹ️  여유 공간 ${AVAIL}GB → Qwen3 8B Q4_K_M (~5GB) 자동 선택"
+        info "  Qwen3 8B 다운로드 중... (5GB, 5-10분 소요)"
+        $HF_DL bartowski/Qwen_Qwen3-8B-GGUF \
+            Qwen3-8B-Q4_K_M.gguf \
+            --local-dir "$DIR/models"
+        MODEL_FILE="$DIR/models/Qwen3-8B-Q4_K_M.gguf"
+        ok "Qwen3 8B Q4_K_M 다운로드 완료 (나중에 공간 확보 후 더 큰 모델로 교체 가능)"
+        ;;
+    medium)
+        echo "  ℹ️  여유 공간 ${AVAIL}GB → Qwen3 14B Q4_K_M (~9GB) 자동 선택"
+        info "  Qwen3 14B 다운로드 중... (9GB, 10-20분 소요)"
+        $HF_DL bartowski/Qwen_Qwen3-14B-GGUF \
+            Qwen3-14B-Q4_K_M.gguf \
+            --local-dir "$DIR/models"
+        MODEL_FILE="$DIR/models/Qwen3-14B-Q4_K_M.gguf"
+        ok "Qwen3 14B Q4_K_M 다운로드 완료"
+        ;;
+    large)
+        echo "  ℹ️  여유 공간 ${AVAIL}GB → GPT-OSS 20B Q5_K_M (~13.7GB) 자동 선택"
+        info "  GPT-OSS 20B 다운로드 중... (13.7GB, 15-30분 소요)"
+        $HF_DL unsloth/gpt-oss-20b-GGUF \
+            gpt-oss-20b-Q5_K_M.gguf \
+            --local-dir "$DIR/models"
+        MODEL_FILE="$DIR/models/gpt-oss-20b-Q5_K_M.gguf"
+        ok "GPT-OSS 20B 다운로드 완료"
+        ;;
+esac
+sed -i '' "s|MODEL_MAIN = .*|MODEL_MAIN = \"$MODEL_FILE\"|" "$DIR/config.py"
 
 # ── Step 8: launchd 자동 시작 등록 ───────────────────────────────────────────
 info "Step 8: 부팅 자동 시작 설정"
