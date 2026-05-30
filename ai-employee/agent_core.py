@@ -2,9 +2,63 @@
 
 import autogen
 from datetime import datetime
+from openai import OpenAI
 from config import EMPLOYEES, LLM_PORT_MAIN, LLM_HOST
 
 LLM_BASE_URL = f"http://localhost:{LLM_PORT_MAIN}/v1"
+
+# 로컬 llama.cpp(OpenAI 호환) 직접 호출용 클라이언트.
+# ag2 의 initiate_chat 은 1턴 질의에도 빈 2차 호출을 일으켜 느린 CPU에서
+# 응답이 멈추거나 2배 느려진다. 단순 질의/지시/미팅은 이 클라이언트로 직접 호출한다.
+_client = OpenAI(base_url=LLM_BASE_URL, api_key="local", timeout=600)
+
+
+def chat(system_prompt: str, user_message: str, max_tokens: int = 1024) -> str:
+    """단일 직원에게 직접 질의하고 답변 텍스트를 반환한다."""
+    resp = _client.chat.completions.create(
+        model="local",
+        messages=[
+            {"role": "system", "content": "/no_think\n" + system_prompt},
+            {"role": "user", "content": user_message},
+        ],
+        max_tokens=max_tokens,
+        temperature=0.7,
+    )
+    return (resp.choices[0].message.content or "").strip()
+
+
+def ask_employee(key: str, user_message: str, max_tokens: int = 1024) -> str:
+    """역할(key: CEO/DEV/ANALYST/MARKETING)에 맞는 직원에게 직접 질의."""
+    cfg = EMPLOYEES[key]
+    system = (
+        f"당신은 {cfg['role']}입니다.\n{cfg['prompt']}\n\n"
+        f"항상 한국어로 답변하고, 결론과 다음 행동 계획을 명확히 제시하세요."
+    )
+    return chat(system, user_message, max_tokens)
+
+
+def team_meeting(topic: str) -> list[tuple[str, str]]:
+    """AI 직원들이 순서대로 발언하는 미팅. (역할명, 발언) 목록 반환.
+
+    각 직원은 앞선 동료들의 발언을 보고 자기 관점에서 의견을 더한다.
+    ag2 GroupChat 대신 직접 호출로 구현해 CPU에서 안정적으로 동작한다.
+    """
+    transcript: list[tuple[str, str]] = []
+    for key in EMPLOYEES:
+        cfg = EMPLOYEES[key]
+        prior = "\n\n".join(f"[{r}] {t}" for r, t in transcript) or "(아직 발언 없음)"
+        system = (
+            f"당신은 {cfg['role']}입니다.\n{cfg['prompt']}\n\n"
+            f"회사 미팅 중입니다. 한국어로 3~5문장으로 당신 역할 관점의 의견을 말하세요."
+        )
+        user = (
+            f"[미팅 주제] {topic}\n\n"
+            f"[지금까지 동료들의 발언]\n{prior}\n\n"
+            f"이제 {cfg['role']}로서 의견을 제시하세요."
+        )
+        say = chat(system, user, max_tokens=512)
+        transcript.append((cfg["role"], say))
+    return transcript
 
 llm_config = {
     "config_list": [{

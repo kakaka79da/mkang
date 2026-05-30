@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from config import MACHINE_ID, NETWORK_PORT, PEER_NODES
-from agent_core import ceo, make_user_proxy, run_meeting
+from agent_core import ask_employee, team_meeting
 from memory import memory
 
 log = logging.getLogger(__name__)
@@ -52,13 +52,10 @@ async def receive_message(payload: MessagePayload):
     """다른 AI 직원 노드로부터 메시지 수신 및 응답."""
     log.info(f"[{payload.from_node}] → {payload.message[:80]}")
 
-    proxy = make_user_proxy("Network")
-    proxy.initiate_chat(
-        ceo.agent,
-        message=f"[{payload.from_node} 에서 온 메시지]\n{payload.message}",
-        max_turns=2,
+    reply = ask_employee(
+        "CEO",
+        f"[{payload.from_node} 에서 온 메시지]\n{payload.message}",
     )
-    reply = proxy.last_message()["content"]
     memory.remember(
         f"[네트워크] {payload.from_node}: {payload.message}\n답변: {reply}",
         metadata={"from": payload.from_node},
@@ -73,10 +70,8 @@ async def start_network_meeting(payload: MeetingPayload):
     topic = payload.topic
 
     # 로컬 미팅 먼저 진행
-    local_messages = run_meeting(topic, max_round=payload.max_round)
-    local_summary = "\n".join(
-        f"{m['name']}: {m['content'][:200]}" for m in local_messages[-6:]
-    )
+    local_transcript = team_meeting(topic)
+    local_summary = "\n".join(f"{role}: {say[:200]}" for role, say in local_transcript)
 
     # 피어 노드들에게 결과 공유 및 의견 수집
     peer_replies = []
@@ -120,13 +115,10 @@ async def check_peers():
 @app.post("/task")
 async def assign_task(payload: TaskPayload):
     """이 노드에 작업 할당."""
-    proxy = make_user_proxy("Coordinator")
-    proxy.initiate_chat(
-        ceo.agent,
-        message=f"[작업 할당] {payload.task}\n담당: {payload.assigned_to}",
-        max_turns=3,
-    )
-    plan = proxy.last_message()["content"]
+    key = payload.assigned_to.upper()
+    if key not in {"CEO", "DEV", "ANALYST", "MARKETING"}:
+        key = "CEO"
+    plan = ask_employee(key, f"[작업 할당] {payload.task}\n실행 계획을 수립하세요.")
     memory.remember(f"[작업] {payload.task}\n[계획] {plan}", category="tasks")
     return {"node": MACHINE_ID, "task": payload.task, "plan": plan}
 
