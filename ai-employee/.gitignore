@@ -1,0 +1,9 @@
+config.py
+venv/
+models/
+memory_db/
+logs/*.log
+logs/*.pid
+__pycache__/
+*.pyc
+.DS_Store
