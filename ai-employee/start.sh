@@ -57,7 +57,7 @@ CPU_THREADS="$(sysctl -n hw.logicalcpu)"
     -c 8192 \
     -b 512 \
     -np 1 \
-    --mlock \
+    --no-warmup \
     --host 0.0.0.0 \
     --port 11434 \
     --metrics \
