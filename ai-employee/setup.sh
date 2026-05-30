@@ -25,14 +25,38 @@ echo "  AI 직원 시스템 설치 (Intel iMac + AMD GPU)"
 echo "=================================================="
 echo -e "${RESET}"
 
-# ── Step 0: 저장 공간 확인 ──────────────────────────────────────────────────
-info "Step 0: 저장 공간 확인"
+# ── Step 0: 저장 공간 확인 및 자동 정리 ────────────────────────────────────
+info "Step 0: 저장 공간 확인 및 자동 정리"
 AVAIL=$(df -g "$HOME" | awk 'NR==2{print $4}')
-echo "  여유 공간: ${AVAIL}GB"
-if [ "$AVAIL" -lt 30 ]; then
-    err "저장 공간이 부족합니다 (${AVAIL}GB). 최소 30GB 이상 확보 후 재실행하세요."
+echo "  현재 여유 공간: ${AVAIL}GB"
+
+if [ "$AVAIL" -lt 14 ]; then
+    info "  자동 정리 시작..."
+    brew cleanup --prune=all 2>/dev/null || true
+    rm -rf ~/Library/Caches/pip 2>/dev/null || true
+    rm -rf ~/Library/Caches/com.apple.dt.Xcode 2>/dev/null || true
+    rm -rf ~/Library/Developer/Xcode/DerivedData 2>/dev/null || true
+    AVAIL=$(df -g "$HOME" | awk 'NR==2{print $4}')
+    echo "  정리 후 여유 공간: ${AVAIL}GB"
 fi
-ok "저장 공간 충분 (${AVAIL}GB)"
+
+if [ "$AVAIL" -lt 14 ]; then
+    echo ""
+    echo "  ⚠️  여유 공간 부족 (${AVAIL}GB). 아래에서 큰 파일을 확인하세요:"
+    echo ""
+    du -sh ~/Downloads/* 2>/dev/null | sort -hr | head -10 | sed 's/^/     /'
+    echo ""
+    echo "  Downloads 폴더 정리 후 setup.sh 를 다시 실행하세요."
+    err "저장 공간 부족 (${AVAIL}GB / 최소 14GB 필요)"
+fi
+
+# 공간에 따라 자동으로 적합한 모델 선택
+if [ "$AVAIL" -lt 20 ]; then
+    AUTO_MODEL="small"   # Qwen3 14B ~12GB
+else
+    AUTO_MODEL="large"   # GPT-OSS 20B ~13.7GB
+fi
+ok "저장 공간 확인 완료 (${AVAIL}GB 여유)"
 
 # ── Step 1: Xcode Command Line Tools ────────────────────────────────────────
 info "Step 1: Xcode Command Line Tools 확인"
@@ -129,52 +153,26 @@ info "Step 7: AI 모델 다운로드"
 mkdir -p "$DIR/models"
 pip install -q "huggingface_hub[cli]"
 
-MODEL_PATH="$DIR/models/gpt-oss-20b-Q5_K_M.gguf"
-
 echo ""
-echo "  어떤 모델을 다운로드하시겠습니까?"
-echo ""
-echo "  1) GPT-OSS 20B Q5_K_M  (~13.7GB) ← 추천 ⭐ (AMD 공식 지원, o3-mini 수준)"
-echo "  2) Qwen3 14B Q6_K       (~12GB)   ← 에이전트·툴콜 특화"
-echo "  3) 둘 다 다운로드        (~26GB)"
-echo "  4) 나중에 직접 다운로드"
-echo ""
-read -r -p "  선택 (1/2/3/4): " MODEL_CHOICE
-
-case "$MODEL_CHOICE" in
-    1|"")
-        info "  GPT-OSS 20B 다운로드 중... (13.7GB, 10-30분 소요)"
-        huggingface-cli download unsloth/gpt-oss-20b-GGUF \
-            gpt-oss-20b-Q5_K_M.gguf \
-            --local-dir "$DIR/models"
-        # config.py 모델 경로 업데이트
-        sed -i '' "s|gpt-oss-20b-Q5_K_M.gguf|$DIR/models/gpt-oss-20b-Q5_K_M.gguf|" "$DIR/config.py"
-        ok "GPT-OSS 20B 다운로드 완료"
-        ;;
-    2)
-        info "  Qwen3 14B 다운로드 중... (12GB, 10-25분 소요)"
-        huggingface-cli download bartowski/Qwen_Qwen3-14B-GGUF \
-            Qwen3-14B-Q6_K.gguf \
-            --local-dir "$DIR/models"
-        sed -i '' "s|MODEL_MAIN = .*|MODEL_MAIN = \"$DIR/models/Qwen3-14B-Q6_K.gguf\"|" "$DIR/config.py"
-        ok "Qwen3 14B 다운로드 완료"
-        ;;
-    3)
-        info "  GPT-OSS 20B 다운로드 중..."
-        huggingface-cli download unsloth/gpt-oss-20b-GGUF \
-            gpt-oss-20b-Q5_K_M.gguf \
-            --local-dir "$DIR/models"
-        info "  Qwen3 14B 다운로드 중..."
-        huggingface-cli download bartowski/Qwen_Qwen3-14B-GGUF \
-            Qwen3-14B-Q6_K.gguf \
-            --local-dir "$DIR/models"
-        ok "두 모델 다운로드 완료"
-        ;;
-    4)
-        echo "  모델 다운로드를 건너뜁니다."
-        echo "  나중에: huggingface-cli download unsloth/gpt-oss-20b-GGUF gpt-oss-20b-Q5_K_M.gguf --local-dir $DIR/models"
-        ;;
-esac
+if [ "$AUTO_MODEL" = "small" ]; then
+    echo "  ℹ️  여유 공간 ${AVAIL}GB → Qwen3 14B Q4_K_M (~9GB) 자동 선택"
+    info "  Qwen3 14B 다운로드 중... (9GB, 10-20분 소요)"
+    huggingface-cli download bartowski/Qwen_Qwen3-14B-GGUF \
+        Qwen3-14B-Q4_K_M.gguf \
+        --local-dir "$DIR/models"
+    MODEL_FILE="$DIR/models/Qwen3-14B-Q4_K_M.gguf"
+    sed -i '' "s|MODEL_MAIN = .*|MODEL_MAIN = \"$MODEL_FILE\"|" "$DIR/config.py"
+    ok "Qwen3 14B Q4_K_M 다운로드 완료"
+else
+    echo "  ℹ️  여유 공간 ${AVAIL}GB → GPT-OSS 20B Q5_K_M (~13.7GB) 자동 선택"
+    info "  GPT-OSS 20B 다운로드 중... (13.7GB, 15-30분 소요)"
+    huggingface-cli download unsloth/gpt-oss-20b-GGUF \
+        gpt-oss-20b-Q5_K_M.gguf \
+        --local-dir "$DIR/models"
+    MODEL_FILE="$DIR/models/gpt-oss-20b-Q5_K_M.gguf"
+    sed -i '' "s|MODEL_MAIN = .*|MODEL_MAIN = \"$MODEL_FILE\"|" "$DIR/config.py"
+    ok "GPT-OSS 20B 다운로드 완료"
+fi
 
 # ── Step 8: launchd 자동 시작 등록 ───────────────────────────────────────────
 info "Step 8: 부팅 자동 시작 설정"
