@@ -26,12 +26,23 @@ fi
 echo "🚀 AI 직원 시스템 기동 중..."
 echo "   모델: $MODEL"
 
-# ① LLM 서버 (Metal GPU 100% 활용)
-llama-server \
+# llama-server 바이너리 탐지
+# (sudo install 본은 rpath 누락 버그가 있어 빌드 폴더 바이너리를 우선 사용)
+if [ -x "$HOME/llama.cpp/build/bin/llama-server" ]; then
+    LLAMA_BIN="$HOME/llama.cpp/build/bin/llama-server"
+else
+    LLAMA_BIN="llama-server"
+fi
+# dylib 검색 경로 보강
+export DYLD_LIBRARY_PATH="$HOME/llama.cpp/build/bin:/usr/local/lib:$DYLD_LIBRARY_PATH"
+echo "   바이너리: $LLAMA_BIN"
+
+# ① LLM 서버 (Metal GPU 활용)
+"$LLAMA_BIN" \
     -m "$MODEL" \
     -ngl 99 \
-    -c 16384 \
-    -np 4 \
+    -c 8192 \
+    -np 2 \
     --host 0.0.0.0 \
     --port 11434 \
     --metrics \

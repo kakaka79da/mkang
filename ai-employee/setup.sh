@@ -98,16 +98,19 @@ cmake -B build \
     -DCMAKE_BUILD_TYPE=Release \
     -DLLAMA_CURL=ON
 cmake --build build --config Release -j"$(sysctl -n hw.logicalcpu)"
-sudo cmake --install build
+# 주의: sudo install 본은 rpath 누락 버그가 있어 실행이 실패함.
+# 따라서 빌드 폴더의 바이너리를 직접 사용한다 (start.sh 가 자동 탐지).
 cd "$DIR"
+LLAMA_BIN="$LLAMA_DIR/build/bin/llama-server"
+export DYLD_LIBRARY_PATH="$LLAMA_DIR/build/bin:$DYLD_LIBRARY_PATH"
 ok "llama.cpp Metal 빌드 완료"
 
 # GPU 확인
 echo "  GPU 확인 중..."
-if llama-server --version 2>&1 | grep -q "Metal\|metal"; then
-    ok "Metal 백엔드 확인됨"
+if [ -x "$LLAMA_BIN" ]; then
+    ok "llama-server 빌드 확인됨: $LLAMA_BIN"
 else
-    echo "  (llama-server 실행 시 Metal 로그로 확인 가능)"
+    echo "  ⚠️  빌드 바이너리를 찾지 못했습니다: $LLAMA_BIN"
 fi
 
 # ── Step 5: Python 가상환경 ───────────────────────────────────────────────────
@@ -191,6 +194,9 @@ case "$AUTO_MODEL" in
         ;;
 esac
 sed -i '' "s|MODEL_MAIN = .*|MODEL_MAIN = \"$MODEL_FILE\"|" "$DIR/config.py"
+
+# 스크립트 실행 권한 부여
+chmod +x "$DIR"/*.sh 2>/dev/null || true
 
 # ── Step 8: launchd 자동 시작 등록 ───────────────────────────────────────────
 info "Step 8: 부팅 자동 시작 설정"
