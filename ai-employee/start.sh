@@ -38,9 +38,19 @@ export DYLD_LIBRARY_PATH="$HOME/llama.cpp/build/bin:/usr/local/lib:$DYLD_LIBRARY
 echo "   바이너리: $LLAMA_BIN"
 
 # ① LLM 서버 (Metal GPU 활용)
+# 혹시 남아있는 좀비 서버 정리 (포트 충돌 방지)
+pkill -9 -f "llama-server" 2>/dev/null || true
+sleep 1
+
+# CPU 모드로 실행한다.
+# 이유: Intel Mac + AMD Radeon Pro 5700 XT(RDNA1) 조합은 llama.cpp Metal
+# 백엔드에서 (1) 깨진 출력(gibberish) (2) 0.8 t/s 극저속 버그가 있다.
+# (llama.cpp Issue #19431, #20104). i9 10코어 CPU 가 GPU 보다 ~25배 빠르다.
+CPU_CORES="$(sysctl -n hw.physicalcpu)"
 "$LLAMA_BIN" \
     -m "$MODEL" \
-    -ngl 99 \
+    -ngl 0 \
+    -t "$CPU_CORES" \
     -c 8192 \
     -np 2 \
     --host 0.0.0.0 \
@@ -48,7 +58,7 @@ echo "   바이너리: $LLAMA_BIN"
     --metrics \
     > "$LOG/llm.log" 2>&1 &
 LLM_PID=$!
-echo "  [1/3] LLM 서버 시작 (PID $LLM_PID)"
+echo "  [1/3] LLM 서버 시작 (PID $LLM_PID, CPU ${CPU_CORES}코어)"
 
 # LLM 서버 준비 대기
 echo "  LLM 서버 준비 대기 중..."

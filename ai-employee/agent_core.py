@@ -33,6 +33,9 @@ class AIEmployee:
         self.agent = autogen.AssistantAgent(
             name=self.name,
             system_message=(
+                # /no_think: Qwen3 의 thinking 모드를 끈다. 켜져 있으면 추론 과정에
+                # 토큰을 다 써버려 실제 답변(content)이 비는 문제가 있다.
+                f"/no_think\n"
                 f"당신은 {cfg['role']}입니다.\n"
                 f"{cfg['prompt']}\n\n"
                 f"항상 한국어로 답변하고, 결론과 다음 행동 계획을 명확히 제시하세요.\n"
