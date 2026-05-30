@@ -166,9 +166,9 @@ case "$AUTO_MODEL" in
         echo "  ℹ️  여유 공간 ${AVAIL}GB → Qwen3 8B Q4_K_M (~5GB) 자동 선택"
         info "  Qwen3 8B 다운로드 중... (5GB, 5-10분 소요)"
         $HF_DL bartowski/Qwen_Qwen3-8B-GGUF \
-            Qwen3-8B-Q4_K_M.gguf \
+            Qwen_Qwen3-8B-Q4_K_M.gguf \
             --local-dir "$DIR/models"
-        MODEL_FILE="$DIR/models/Qwen3-8B-Q4_K_M.gguf"
+        MODEL_FILE="$DIR/models/Qwen_Qwen3-8B-Q4_K_M.gguf"
         ok "Qwen3 8B Q4_K_M 다운로드 완료 (나중에 공간 확보 후 더 큰 모델로 교체 가능)"
         ;;
     medium)
