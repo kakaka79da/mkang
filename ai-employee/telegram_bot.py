@@ -10,9 +10,8 @@ from telegram.ext import (
     filters, ContextTypes,
 )
 
-import autogen
-from config import TELEGRAM_TOKEN, AUTHORIZED_USERS, BOT_NAME, MACHINE_ID
-from agent_core import ceo, dev, analyst, marketing, llm_config, make_user_proxy, run_meeting
+from config import TELEGRAM_TOKEN, AUTHORIZED_USERS, BOT_NAME, MACHINE_ID, EMPLOYEES
+from agent_core import ask_employee, team_meeting
 from memory import memory
 
 logging.basicConfig(level=logging.INFO)
@@ -21,11 +20,13 @@ log = logging.getLogger(__name__)
 
 def auth(func):
     """권한 없는 사용자 차단 데코레이터."""
-    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    async def wrapper(*args, **kwargs):
+        # 핸들러가 메서드면 args=(self, update, context), 함수면 args=(update, context)
+        update = next(a for a in args if isinstance(a, Update))
         if update.effective_user.id not in AUTHORIZED_USERS:
             await update.message.reply_text("⛔ 접근 권한이 없습니다.")
             return
-        return await func(update, context)
+        return await func(*args, **kwargs)
     return wrapper
 
 
@@ -77,12 +78,9 @@ class TelegramAIBridge:
         msg = update.message.text
         await update.message.reply_text("🤔 CEO AI가 처리 중...")
 
-        proxy = make_user_proxy("Boss")
-        await asyncio.get_event_loop().run_in_executor(
-            None,
-            lambda: proxy.initiate_chat(ceo.agent, message=msg, max_turns=2),
+        reply = await asyncio.get_event_loop().run_in_executor(
+            None, lambda: ask_employee("CEO", msg)
         )
-        reply = proxy.last_message()["content"]
         memory.remember(f"Q: {msg}\nA: {reply}", metadata={"type": "telegram"})
         await update.message.reply_text(f"💼 CEO AI:\n{reply}")
 
@@ -94,16 +92,13 @@ class TelegramAIBridge:
             return
         await update.message.reply_text(f"📌 업무 접수: {task}\nCEO AI가 처리합니다...")
 
-        proxy = make_user_proxy("Boss")
-        await asyncio.get_event_loop().run_in_executor(
+        reply = await asyncio.get_event_loop().run_in_executor(
             None,
-            lambda: proxy.initiate_chat(
-                ceo.agent,
-                message=f"[업무 지시] {task}\n구체적인 실행 계획을 수립하세요.",
-                max_turns=3,
+            lambda: ask_employee(
+                "CEO",
+                f"[업무 지시] {task}\n구체적인 실행 계획을 단계별로 수립하세요.",
             ),
         )
-        reply = proxy.last_message()["content"]
         memory.remember(f"[업무] {task}\n[계획] {reply}", category="tasks",
                         metadata={"type": "task"})
         await update.message.reply_text(f"✅ CEO AI 계획:\n{reply}")
@@ -113,42 +108,38 @@ class TelegramAIBridge:
         if len(context.args) < 2:
             await update.message.reply_text("사용법: /ask [ceo|dev|analyst|marketing] [질문]")
             return
-        target_key = context.args[0].lower()
+        target_key = context.args[0].upper()
         question = " ".join(context.args[1:])
-        employee_map = {"ceo": ceo, "dev": dev, "analyst": analyst, "marketing": marketing}
-        employee = employee_map.get(target_key)
-        if not employee:
+        if target_key not in EMPLOYEES:
             await update.message.reply_text("직원: ceo, dev, analyst, marketing 중 선택하세요.")
             return
 
-        await update.message.reply_text(f"🤔 {employee.role}에게 전달 중...")
-        proxy = make_user_proxy("Boss")
-        await asyncio.get_event_loop().run_in_executor(
-            None,
-            lambda: proxy.initiate_chat(employee.agent, message=question, max_turns=2),
+        role = EMPLOYEES[target_key]["role"]
+        await update.message.reply_text(f"🤔 {role}에게 전달 중...")
+        reply = await asyncio.get_event_loop().run_in_executor(
+            None, lambda: ask_employee(target_key, question)
         )
-        reply = proxy.last_message()["content"]
-        await update.message.reply_text(f"💬 {employee.role}:\n{reply}")
+        await update.message.reply_text(f"💬 {role}:\n{reply}")
 
     @auth
     async def cmd_meeting(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         topic = " ".join(context.args) if context.args else "이번 주 업무 계획 및 현안"
-        await update.message.reply_text(f"📋 AI 팀 미팅 시작\n주제: {topic}\n\n(최대 2분 소요)")
-
-        messages = await asyncio.get_event_loop().run_in_executor(
-            None, lambda: run_meeting(topic)
+        await update.message.reply_text(
+            f"📋 AI 팀 미팅 시작\n주제: {topic}\n\n(직원 수만큼 발언, 1~2분 소요)"
         )
 
-        lines = []
-        for m in messages[-8:]:
-            name = m.get("name", "?")
-            content = m.get("content", "")[:300]
-            lines.append(f"*{name}*: {content}")
+        transcript = await asyncio.get_event_loop().run_in_executor(
+            None, lambda: team_meeting(topic)
+        )
 
-        summary = "\n\n".join(lines)
+        summary = "\n\n".join(f"🗣 *{role}*\n{say}" for role, say in transcript)
         memory.remember(f"[미팅] {topic}\n{summary}", category="decisions",
                         metadata={"type": "meeting", "topic": topic})
-        await update.message.reply_text(f"📊 미팅 결과:\n\n{summary}", parse_mode="Markdown")
+        # 텔레그램 메시지 길이 제한(4096) 대비 분할 전송
+        header = f"📊 *미팅 결과* — {topic}\n\n"
+        body = header + summary
+        for i in range(0, len(body), 3500):
+            await update.message.reply_text(body[i:i + 3500], parse_mode="Markdown")
 
     @auth
     async def cmd_status(self, update: Update, context: ContextTypes.DEFAULT_TYPE):

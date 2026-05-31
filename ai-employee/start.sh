@@ -26,18 +26,44 @@ fi
 echo "🚀 AI 직원 시스템 기동 중..."
 echo "   모델: $MODEL"
 
-# ① LLM 서버 (Metal GPU 100% 활용)
-llama-server \
+# llama-server 바이너리 탐지
+# (sudo install 본은 rpath 누락 버그가 있어 빌드 폴더 바이너리를 우선 사용)
+if [ -x "$HOME/llama.cpp/build/bin/llama-server" ]; then
+    LLAMA_BIN="$HOME/llama.cpp/build/bin/llama-server"
+else
+    LLAMA_BIN="llama-server"
+fi
+# dylib 검색 경로 보강
+export DYLD_LIBRARY_PATH="$HOME/llama.cpp/build/bin:/usr/local/lib:$DYLD_LIBRARY_PATH"
+echo "   바이너리: $LLAMA_BIN"
+
+# ① LLM 서버
+# 혹시 남아있는 좀비 서버 정리 (포트 충돌 방지)
+pkill -9 -f "llama-server" 2>/dev/null || true
+sleep 1
+
+# CPU 모드로 실행한다.
+# 이유: Intel Mac + AMD Radeon Pro 5700 XT(RDNA1) 조합은 llama.cpp Metal
+# 백엔드에서 (1) 깨진 출력(gibberish) (2) 0.8 t/s 극저속 버그가 있다.
+# (llama.cpp Issue #19431, #20104). i9 10코어 CPU 가 GPU 보다 ~25배 빠르다.
+# 물리 코어(10)로 생성, 논리 코어(20)로 프롬프트 배치 처리 → CPU 최대 활용
+CPU_CORES="$(sysctl -n hw.physicalcpu)"
+CPU_THREADS="$(sysctl -n hw.logicalcpu)"
+"$LLAMA_BIN" \
     -m "$MODEL" \
-    -ngl 99 \
-    -c 16384 \
-    -np 4 \
+    -ngl 0 \
+    -t "$CPU_CORES" \
+    -tb "$CPU_THREADS" \
+    -c 8192 \
+    -b 512 \
+    -np 1 \
+    --no-warmup \
     --host 0.0.0.0 \
     --port 11434 \
     --metrics \
     > "$LOG/llm.log" 2>&1 &
 LLM_PID=$!
-echo "  [1/3] LLM 서버 시작 (PID $LLM_PID)"
+echo "  [1/3] LLM 서버 시작 (PID $LLM_PID, 생성 ${CPU_CORES}코어 / 배치 ${CPU_THREADS}스레드)"
 
 # LLM 서버 준비 대기
 echo "  LLM 서버 준비 대기 중..."

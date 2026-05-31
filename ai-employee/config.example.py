@@ -8,14 +8,18 @@ BOT_NAME = "AI 직원"
 
 # ─── LLM 서버 ──────────────────────────────────────────────────────────────
 LLM_HOST = "0.0.0.0"
-LLM_PORT_MAIN = 11434       # 상시 가동 (GPT-OSS 20B / Qwen3 14B)
-LLM_PORT_HQ = 11435         # 고품질 (Qwen3 32B) — 필요시만 사용
-LLM_CONTEXT = 16384
-LLM_PARALLEL = 4
+LLM_PORT_MAIN = 11434       # 상시 가동
+LLM_PORT_HQ = 11435         # 고품질 모델 (필요시만)
+LLM_CONTEXT = 8192
+LLM_PARALLEL = 1
 
-# 모델 파일 경로 (setup.sh 실행 후 자동 설정됨)
-MODEL_MAIN = "~/ai-employee/models/gpt-oss-20b-Q5_K_M.gguf"
-MODEL_HQ   = "~/ai-employee/models/Qwen3-32B-Q4_K_M.gguf"
+# 모델 파일 경로 (setup.sh 실행 시 자동 설정됨)
+# 디스크 여유분에 따라 자동 선택:
+#   ≥20GB: gpt-oss-20b-Q5_K_M.gguf   (~13.7GB)
+#   ≥14GB: Qwen_Qwen3-14B-Q4_K_M.gguf (~8.4GB)
+#   <14GB:  Qwen_Qwen3-8B-Q4_K_M.gguf  (~5GB)
+MODEL_MAIN = "~/mkang/ai-employee/models/Qwen_Qwen3-8B-Q4_K_M.gguf"
+MODEL_HQ   = "~/mkang/ai-employee/models/Qwen_Qwen3-14B-Q4_K_M.gguf"
 
 # ─── 에이전트 네트워크 ──────────────────────────────────────────────────────
 MACHINE_ID   = "iMac-Node-1"            # 이 컴퓨터의 고유 이름
