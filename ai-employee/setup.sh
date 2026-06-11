@@ -161,7 +161,9 @@ PLIST_SRC="$DIR/launchd/com.aiemployee.plist"
 PLIST_DST="$HOME_DIR/Library/LaunchAgents/com.aiemployee.plist"
 
 if [ -f "$PLIST_SRC" ]; then
-    sed "s|REPLACE_WITH_FULL_PATH|$DIR|g" "$PLIST_SRC" > "$PLIST_DST"
+    sed -e "s|REPLACE_WITH_FULL_PATH|$DIR|g" \
+        -e "s|REPLACE_WITH_HOME|$HOME_DIR|g" \
+        "$PLIST_SRC" > "$PLIST_DST"
     launchctl unload "$PLIST_DST" 2>/dev/null || true
     launchctl load "$PLIST_DST"
     ok "부팅 자동 시작 등록 완료"

@@ -9,7 +9,7 @@
     <key>ProgramArguments</key>
     <array>
         <string>/bin/bash</string>
-        <string>REPLACE_WITH_FULL_PATH/ai-employee/start.sh</string>
+        <string>REPLACE_WITH_FULL_PATH/start.sh</string>
     </array>
 
     <key>RunAtLoad</key>
@@ -22,15 +22,19 @@
     <integer>30</integer>
 
     <key>StandardOutPath</key>
-    <string>REPLACE_WITH_FULL_PATH/ai-employee/logs/launchd_out.log</string>
+    <string>REPLACE_WITH_FULL_PATH/logs/launchd_out.log</string>
 
     <key>StandardErrorPath</key>
-    <string>REPLACE_WITH_FULL_PATH/ai-employee/logs/launchd_err.log</string>
+    <string>REPLACE_WITH_FULL_PATH/logs/launchd_err.log</string>
 
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
-        <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/sbin</string>
+        <key>HOME</key>
+        <string>REPLACE_WITH_HOME</string>
+        <key>DYLD_LIBRARY_PATH</key>
+        <string>REPLACE_WITH_HOME/llama.cpp/build/bin:/usr/local/lib</string>
     </dict>
 </dict>
 </plist>
