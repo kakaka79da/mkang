@@ -87,9 +87,13 @@ start_cpu() {
 
 start_vulkan() {
     export VK_ICD_FILENAMES="$VK_ICD"
-    # GGML_VK_VISIBLE_DEVICES=1: Intel iMac 에서 device 0=Intel GPU, device 1=AMD 5700 XT
-    # 1로 설정하면 AMD 만 보이게 되어 llama.cpp 가 AMD 를 device 0 으로 사용
-    export GGML_VK_VISIBLE_DEVICES=1
+    # 장치 선택: fix_gpu.sh 진단 결과(gpu.env 의 VK_DEVICE)를 따른다.
+    # 비어 있으면 필터 없이 전체 장치 사용 (아이맥은 AMD 가 유일 장치)
+    if [ -n "${VK_DEVICE:-}" ]; then
+        export GGML_VK_VISIBLE_DEVICES="$VK_DEVICE"
+    else
+        unset GGML_VK_VISIBLE_DEVICES
+    fi
     export DYLD_LIBRARY_PATH="$LLAMA_DIR/build-vulkan/bin:/usr/local/lib:$DYLD_LIBRARY_PATH"
     info "Vulkan GPU 모드 시도 (AMD Radeon Pro 5700 XT)" >&2
     "$VK_BIN" \
@@ -119,7 +123,18 @@ wait_server() {
 GPU_MODE="CPU"
 LLM_PID=""
 
-if [ -x "$VK_BIN" ] && [ -f "$VK_ICD" ]; then
+# fix_gpu.sh 진단 결과가 있으면 따른다 (GPU_OK=0 이면 GPU 시도 생략)
+VK_DEVICE=""
+TRY_GPU=1
+if [ -f "$DIR/gpu.env" ]; then
+    source "$DIR/gpu.env"
+    if [ "${GPU_OK:-1}" = "0" ]; then
+        TRY_GPU=0
+        echo "  (gpu.env: 진단 결과 GPU 불가 — CPU 모드로 바로 시작)"
+    fi
+fi
+
+if [ "$TRY_GPU" = "1" ] && [ -x "$VK_BIN" ] && [ -f "$VK_ICD" ]; then
     echo ""
     info "Vulkan 바이너리 발견 — GPU 기동 시도"
     LLM_PID=$(start_vulkan)
