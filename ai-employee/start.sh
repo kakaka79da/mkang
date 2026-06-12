@@ -62,12 +62,14 @@ if [ ! -f "$VK_ICD" ]; then
 fi
 
 # ── LLM 서버 기동 함수 ───────────────────────────────────────────────────────
+# 주의: 이 함수들은 $(...) 로 PID 를 받아가므로, stdout 에는 PID 한 줄만
+# 출력해야 한다. 안내 메시지는 반드시 stderr(>&2)로 보낸다.
 start_cpu() {
     local bin="${1:-$CPU_BIN}"
     export DYLD_LIBRARY_PATH="$LLAMA_DIR/build/bin:/usr/local/lib:$DYLD_LIBRARY_PATH"
     CPU_CORES="$(sysctl -n hw.physicalcpu)"
     CPU_THREADS="$(sysctl -n hw.logicalcpu)"
-    info "CPU 모드 시작 (${CPU_CORES}코어 생성 / ${CPU_THREADS}스레드 배치)"
+    info "CPU 모드 시작 (${CPU_CORES}코어 생성 / ${CPU_THREADS}스레드 배치)" >&2
     "$bin" \
         -m "$MODEL" \
         -ngl 0 \
@@ -89,7 +91,7 @@ start_vulkan() {
     # 1로 설정하면 AMD 만 보이게 되어 llama.cpp 가 AMD 를 device 0 으로 사용
     export GGML_VK_VISIBLE_DEVICES=1
     export DYLD_LIBRARY_PATH="$LLAMA_DIR/build-vulkan/bin:/usr/local/lib:$DYLD_LIBRARY_PATH"
-    info "Vulkan GPU 모드 시도 (AMD Radeon Pro 5700 XT)"
+    info "Vulkan GPU 모드 시도 (AMD Radeon Pro 5700 XT)" >&2
     "$VK_BIN" \
         -m "$MODEL" \
         -ngl 99 \
@@ -125,18 +127,22 @@ if [ -x "$VK_BIN" ] && [ -f "$VK_ICD" ]; then
 
     if wait_server 15; then
         # 서버가 올라왔으면 실제 Vulkan 사용 여부 확인
-        if grep -qiE "ggml_vulkan|Vulkan|vk device" "$LOG/llm.log" 2>/dev/null; then
+        if grep -qiE "ggml_vulkan|vk device" "$LOG/llm.log" 2>/dev/null; then
             ok "Vulkan AMD GPU 활성화!"
             GPU_MODE="Vulkan"
         else
             echo "  서버는 기동됐지만 Vulkan GPU 미인식 (BLAS/CPU 폴백)"
             echo "  → CPU 모드로 전환합니다"
-            kill "$LLM_PID" 2>/dev/null; sleep 1
+            kill "$LLM_PID" 2>/dev/null || true
+            pkill -9 -f "llama-server" 2>/dev/null || true
+            sleep 1
             LLM_PID=$(start_cpu)
         fi
     else
         echo "  Vulkan 서버 타임아웃 — CPU 모드로 전환합니다"
-        kill "$LLM_PID" 2>/dev/null; sleep 1
+        kill "$LLM_PID" 2>/dev/null || true
+        pkill -9 -f "llama-server" 2>/dev/null || true
+        sleep 1
         LLM_PID=$(start_cpu)
     fi
 else
