@@ -25,7 +25,6 @@ fail() { echo -e "${RED}❌ $1${RESET}"; }
 DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$DIR"
 LLAMA_DIR="$HOME/llama.cpp"
-export HSA_OVERRIDE_GFX_VERSION=10.1.0   # 5700 XT(GFX1010) ROCm 인식용
 
 command -v apt >/dev/null || { fail "Ubuntu(apt) 전용 스크립트입니다."; exit 1; }
 
@@ -51,19 +50,20 @@ else
     sudo apt-get update -q
     sudo apt-get install -y rocm-hip-sdk rocminfo
     sudo usermod -aG render,video "$USER"
-    grep -q HSA_OVERRIDE_GFX_VERSION ~/.bashrc || {
-        echo 'export PATH=$PATH:/opt/rocm/bin' >> ~/.bashrc
-        echo 'export HSA_OVERRIDE_GFX_VERSION=10.1.0' >> ~/.bashrc
-    }
+    grep -q '/opt/rocm/bin' ~/.bashrc || echo 'export PATH=$PATH:/opt/rocm/bin' >> ~/.bashrc
     ok "ROCm 설치 완료"
 fi
 
-# GPU 인식 확인
-if /opt/rocm/bin/rocminfo 2>/dev/null | grep -qi "gfx101"; then
-    ok "GPU 인식됨: $(/opt/rocm/bin/rocminfo | grep -m1 'Marketing Name' | sed 's/.*: *//')"
+# GPU 아키텍처 자동 감지
+#   5700 XT(2020형) = gfx1010 → HSA_OVERRIDE 필요 (공식 지원 목록 제외 우회)
+#   Vega 48(2019형) = gfx906  → 공식 지원, 우회 불필요
+GFX=$(/opt/rocm/bin/rocminfo 2>/dev/null | grep -m1 -oE 'gfx[0-9a-f]+' || true)
+if [ -n "$GFX" ]; then
+    ok "GPU 인식됨: $GFX — $(/opt/rocm/bin/rocminfo | grep -m1 'Marketing Name' | sed 's/.*: *//')"
 else
     warn "rocminfo 에서 GPU 미확인 — 그룹 권한 반영을 위해 재부팅 후 이 스크립트를 다시 실행하면 됩니다."
 fi
+case "$GFX" in gfx101*) export HSA_OVERRIDE_GFX_VERSION=10.1.0 ;; esac
 
 # ── 2. llama.cpp ROCm 빌드 ───────────────────────────────────
 info "[2/5] llama.cpp HIP(ROCm) 빌드"
@@ -75,9 +75,10 @@ else
         git clone https://github.com/ggml-org/llama.cpp "$LLAMA_DIR"
     fi
     cd "$LLAMA_DIR"
+    # gfx1010(5700 XT) + gfx906(Vega 48) 둘 다 빌드 — 어느 아이맥이든 작동
     HIPCXX=/opt/rocm/llvm/bin/clang++ cmake -B build-rocm \
         -DGGML_HIP=ON \
-        -DAMDGPU_TARGETS=gfx1010 \
+        -DAMDGPU_TARGETS="gfx1010;gfx906" \
         -DCMAKE_BUILD_TYPE=Release \
         -DLLAMA_CURL=ON
     cmake --build build-rocm --config Release -j"$(nproc)"
@@ -171,7 +172,6 @@ Wants=network-online.target
 Type=simple
 User=$USER
 WorkingDirectory=$DIR
-Environment=HSA_OVERRIDE_GFX_VERSION=10.1.0
 ExecStart=/bin/bash $DIR/start_linux.sh
 Restart=always
 RestartSec=15
@@ -182,6 +182,9 @@ EOF
 sudo systemctl daemon-reload
 sudo systemctl enable ai-employee.service
 ok "부팅 시 자동 시작 등록 완료"
+
+# 텔레그램 /switch (OS 전환) 도구 — Linux 쪽 설치
+bash "$DIR/setup_os_switch.sh" || warn "OS 전환 도구 설치 실패 — setup_os_switch.sh 직접 실행"
 
 # 즉시 시작
 sudo systemctl restart ai-employee.service

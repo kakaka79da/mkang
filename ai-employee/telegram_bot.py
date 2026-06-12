@@ -2,6 +2,9 @@
 
 import asyncio
 import logging
+import os
+import platform
+import subprocess
 import psutil
 from datetime import datetime
 from telegram import Update
@@ -16,6 +19,11 @@ from memory import memory
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
+
+# 듀얼 부팅 OS 전환용 (setup_os_switch.sh 가 설치)
+OS_NAME = "macOS" if platform.system() == "Darwin" else "Ubuntu(Linux)"
+OTHER_OS = "Ubuntu(Linux)" if OS_NAME == "macOS" else "macOS"
+OS_SWITCH_HELPER = "/usr/local/sbin/os-switch"
 
 
 def auth(func):
@@ -66,6 +74,7 @@ class TelegramAIBridge:
             ("drive", self.cmd_drive),
             ("read", self.cmd_read),
             ("report", self.cmd_report),
+            ("switch", self.cmd_switch),
         ]
         for name, handler in cmds:
             self.app.add_handler(CommandHandler(name, handler))
@@ -97,7 +106,8 @@ class TelegramAIBridge:
             "*시스템*\n"
             "/status — 시스템 상태\n"
             "/memory [검색어] — 과거 기억 검색\n"
-            "/today — 오늘 업무 요약\n\n"
+            "/today — 오늘 업무 요약\n"
+            "/switch — 다른 OS로 재부팅 (macOS ↔ Ubuntu)\n\n"
             "또는 그냥 메시지를 보내면 CEO AI가 답변합니다.",
             parse_mode="Markdown",
         )
@@ -311,6 +321,43 @@ class TelegramAIBridge:
     # ── 시스템 ──────────────────────────────────────────────────────────────
 
     @auth
+    async def cmd_switch(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """듀얼 부팅 OS 전환: 다음 1회만 반대편 OS로 부팅 후 재부팅."""
+        if not os.path.exists(OS_SWITCH_HELPER):
+            await update.message.reply_text(
+                "❌ OS 전환 도구가 설치되지 않았습니다.\n"
+                f"{OS_NAME} 터미널에서 한 번 실행하세요:\n"
+                "bash ~/mkang/ai-employee/setup_os_switch.sh"
+            )
+            return
+        arg = " ".join(context.args).strip().lower()
+        if arg not in ("yes", "y", "ok", "확인"):
+            await update.message.reply_text(
+                f"🔄 OS 전환\n"
+                f"현재: {OS_NAME}\n"
+                f"전환: {OTHER_OS}\n\n"
+                f"진행하려면 → /switch yes\n"
+                f"(재부팅 후 2~3분 뒤 {OTHER_OS} 쪽 봇이 응답합니다)"
+            )
+            return
+        await update.message.reply_text(
+            f"🔄 {OTHER_OS} 로 재부팅합니다!\n"
+            f"2~3분 뒤에 아무 메시지나 보내 보세요."
+        )
+        try:
+            # sudo -n: 비밀번호 프롬프트 없이 (sudoers 에 NOPASSWD 등록됨)
+            result = subprocess.run(
+                ["sudo", "-n", OS_SWITCH_HELPER],
+                capture_output=True, text=True, timeout=30,
+            )
+            if result.returncode != 0:
+                await update.message.reply_text(
+                    f"❌ 전환 실패:\n{result.stderr or result.stdout}".strip()
+                )
+        except subprocess.TimeoutExpired:
+            pass  # 재부팅이 시작되면 프로세스가 끊기는 게 정상
+
+    @auth
     async def cmd_status(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         ram = psutil.virtual_memory()
         cpu = psutil.cpu_percent(interval=1)
@@ -318,6 +365,7 @@ class TelegramAIBridge:
         drive_state = "✅ 연동됨" if _drive() else "❌ 미설정"
         await update.message.reply_text(
             f"🖥️ *{MACHINE_ID} 상태*\n\n"
+            f"OS: {OS_NAME}\n"
             f"CPU: {cpu:.1f}%\n"
             f"RAM: {ram.used/1024**3:.1f} / {ram.total/1024**3:.1f} GB "
             f"({ram.percent:.0f}%)\n"

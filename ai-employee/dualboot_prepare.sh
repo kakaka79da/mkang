@@ -39,10 +39,10 @@ info "[1/5] 시스템 확인"
 MODEL_ID=$(sysctl -n hw.model)
 echo "  모델: $MODEL_ID"
 if system_profiler SPiBridgeDataType 2>/dev/null | grep -q "T2"; then
-    ok "Apple T2 칩 확인 — t2linux ISO 사용 (올바른 선택)"
+    ok "Apple T2 칩 있음 (iMac 2020 등) — t2linux 패치판 Ubuntu 사용"
     HAS_T2=1
 else
-    warn "T2 칩 미감지 — 일반 Ubuntu ISO 도 가능하지만 t2linux ISO 로 진행 (해 될 것 없음)"
+    ok "T2 칩 없음 (iMac 2019 등) — 일반 Ubuntu 사용, 시동 보안 해제도 불필요!"
     HAS_T2=0
 fi
 
@@ -67,13 +67,13 @@ warn "시작 전에 Time Machine 등으로 백업을 권장합니다. 파티션 
 read -r -p "  계속하시겠습니까? (yes 입력): " GO
 [ "$GO" != "yes" ] && echo "중단됨" && exit 0
 
-# ── 2. t2linux Ubuntu ISO 다운로드 ───────────────────────────
-info "[2/5] t2linux Ubuntu ISO 다운로드"
-ISO="$WORK/ubuntu-t2.iso"
+# ── 2. Ubuntu ISO 다운로드 (T2 유무에 따라 자동 선택) ────────
+ISO="$WORK/ubuntu-imac.iso"
 
 if [ -f "$ISO" ]; then
-    ok "이미 다운로드됨: $ISO — 건너뜀"
-else
+    info "[2/5] ISO 이미 다운로드됨 — 건너뜀"
+elif [ "$HAS_T2" = "1" ]; then
+    info "[2/5] t2linux Ubuntu ISO 다운로드 (T2 맥 전용 패치판)"
     API="https://api.github.com/repos/t2linux/T2-Ubuntu/releases/latest"
     echo "  최신 릴리스 확인 중..."
     URLS=$(curl -fsSL "$API" | grep -oE '"browser_download_url": *"[^"]+"' \
@@ -98,6 +98,14 @@ else
         FIRST=$(ls ./*.iso | head -1)
         [ "$FIRST" != "$ISO" ] && mv "$FIRST" "$ISO"
     fi
+    ok "ISO 준비 완료: $ISO ($(du -h "$ISO" | cut -f1))"
+else
+    info "[2/5] Ubuntu 24.04 LTS 공식 ISO 다운로드 (T2 없는 맥은 일반판 사용)"
+    BASE="https://releases.ubuntu.com/24.04"
+    FNAME=$(curl -fsSL "$BASE/" | grep -oE 'ubuntu-24\.04[0-9.]*-desktop-amd64\.iso' | head -1)
+    [ -z "$FNAME" ] && fail "ISO 목록 조회 실패: $BASE" && exit 1
+    echo "  ↓ $FNAME (~6GB)"
+    curl -fL -C - -o "$ISO" "$BASE/$FNAME"
     ok "ISO 준비 완료: $ISO ($(du -h "$ISO" | cut -f1))"
 fi
 
@@ -133,14 +141,24 @@ else
     warn "USB 제작 건너뜀 — 나중에 이 스크립트를 다시 실행하면 됩니다 (ISO 재다운로드 안 함)"
 fi
 
-# ── 4. WiFi/블루투스 펌웨어 추출 ─────────────────────────────
-info "[4/5] WiFi/블루투스 펌웨어 추출 (t2linux 공식 스크립트)"
-echo "  Linux 는 맥 무선랜 펌웨어를 macOS 에서 가져와야 합니다."
-echo "  곧 나오는 질문에서 기본값(엔터)을 선택하면 EFI 파티션에 저장되고,"
-echo "  Ubuntu 설치 후 자동으로 인식됩니다."
-echo ""
-curl -fsSL https://wiki.t2linux.org/tools/firmware.sh | bash || \
-    warn "펌웨어 추출 실패 — 설치 후 유선랜으로 인터넷 연결하면 우회 가능"
+# ── 4. WiFi/블루투스 펌웨어 추출 (T2 맥만 필요) ──────────────
+if [ "$HAS_T2" = "1" ]; then
+    info "[4/5] WiFi/블루투스 펌웨어 추출 (t2linux 공식 스크립트)"
+    echo "  Linux 는 맥 무선랜 펌웨어를 macOS 에서 가져와야 합니다."
+    echo "  곧 나오는 질문에서 기본값(엔터)을 선택하면 EFI 파티션에 저장되고,"
+    echo "  Ubuntu 설치 후 자동으로 인식됩니다."
+    echo ""
+    curl -fsSL https://wiki.t2linux.org/tools/firmware.sh | bash || \
+        warn "펌웨어 추출 실패 — 설치 후 유선랜으로 인터넷 연결하면 우회 가능"
+else
+    info "[4/5] 펌웨어 추출 건너뜀 (T2 없음)"
+    echo "  설치 중 WiFi 가 안 잡히면 아이맥 뒷면 유선랜(이더넷)을 연결하세요."
+    echo "  설치 옵션에서 '서드파티 드라이버 설치'를 체크하면 WiFi 가 잡힙니다."
+fi
+
+# 텔레그램 /switch (OS 전환) 도구 — macOS 쪽 설치
+bash "$(dirname "$0")/setup_os_switch.sh" || \
+    warn "OS 전환 도구 설치 실패 — 나중에 setup_os_switch.sh 를 직접 실행하세요"
 
 # ── 5. APFS 파티션 축소 ──────────────────────────────────────
 info "[5/5] APFS 파티션 ${LINUX_GB}GB 축소 → Linux 용 빈 공간 확보"
@@ -172,13 +190,20 @@ echo ""
 echo "============================================================"
 ok "macOS 쪽 준비 끝! 다음은 수동 단계입니다 (DUALBOOT_GUIDE.md)"
 echo ""
-echo "  ① 재시동 → 즉시 Cmd(⌘)+R 꾹 → 복구 모드"
-echo "     유틸리티 메뉴 > 시동 보안 유틸리티:"
-echo "       - 보안 없음(No Security) 선택"
-echo "       - 외부 미디어 부팅 허용 선택"
-echo "  ② 재시동 → 즉시 Option(⌥) 꾹 → 'EFI Boot'(USB) 선택"
-echo "  ③ Ubuntu 설치 (빈 공간에 자동 설치됨)"
+if [ "$HAS_T2" = "1" ]; then
+    echo "  ① 재시동 → 즉시 Cmd(⌘)+R 꾹 → 복구 모드"
+    echo "     유틸리티 메뉴 > 시동 보안 유틸리티:"
+    echo "       - 보안 없음(No Security) 선택"
+    echo "       - 외부 미디어 부팅 허용 선택"
+    echo "  ② 재시동 → 즉시 Option(⌥) 꾹 → 'EFI Boot'(USB) 선택"
+else
+    echo "  ① (T2 없음 — 시동 보안 해제 단계 불필요!)"
+    echo "  ② 재시동 → 즉시 Option(⌥) 꾹 → 'EFI Boot'(USB) 선택"
+fi
+echo "  ③ Ubuntu 설치 (빈 공간에 설치, APFS 파티션은 건드리지 말 것)"
 echo "  ④ Ubuntu 부팅 후:"
 echo "     git clone https://github.com/kakaka79da/mkang ~/mkang"
 echo "     bash ~/mkang/ai-employee/linux_ai_setup.sh"
+echo ""
+echo "  설치가 끝나면 텔레그램 /switch yes 로 OS 를 오갈 수 있습니다."
 echo "============================================================"

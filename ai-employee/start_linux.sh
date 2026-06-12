@@ -10,7 +10,10 @@ mkdir -p "$LOG"
 cd "$DIR"
 source "$DIR/venv/bin/activate"
 
-export HSA_OVERRIDE_GFX_VERSION=10.1.0
+# GPU 아키텍처별 ROCm 설정: gfx1010(5700 XT)만 우회 필요, gfx906(Vega 48)은 불필요
+GFX=$(/opt/rocm/bin/rocminfo 2>/dev/null | grep -m1 -oE 'gfx[0-9a-f]+' || true)
+case "$GFX" in gfx101*) export HSA_OVERRIDE_GFX_VERSION=10.1.0 ;; esac
+
 LLAMA_DIR="$HOME/llama.cpp"
 BIN="$LLAMA_DIR/build-rocm/bin/llama-server"
 [ -x "$BIN" ] || BIN="$(command -v llama-server)"
