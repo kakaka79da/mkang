@@ -61,6 +61,36 @@ def team_meeting(topic: str) -> list[tuple[str, str]]:
     return transcript
 
 
+def duo_chat(key_a: str, key_b: str, topic: str, rounds: int = 3) -> list[tuple[str, str]]:
+    """두 AI 직원이 주제를 놓고 번갈아 대화. (역할명, 발언) 목록 반환.
+
+    예: duo_chat("DEV", "ANALYST", "신규 서비스 기술 스택") → 개발자와
+    분석가가 rounds 번씩 주고받으며 토론한다.
+    """
+    cfg_a, cfg_b = EMPLOYEES[key_a], EMPLOYEES[key_b]
+    transcript: list[tuple[str, str]] = []
+
+    for i in range(rounds * 2):
+        speaker = cfg_a if i % 2 == 0 else cfg_b
+        listener = cfg_b if i % 2 == 0 else cfg_a
+        prior = "\n\n".join(f"[{r}] {t}" for r, t in transcript) or "(첫 발언입니다)"
+        last_round = i >= rounds * 2 - 2
+        system = (
+            f"당신은 {speaker['role']}입니다.\n{speaker['prompt']}\n\n"
+            f"{listener['role']}와 1:1 대화 중입니다. "
+            f"한국어로 2~4문장, 상대 발언에 직접 반응하며 대화를 이어가세요."
+            + ("\n마지막 발언이니 합의점이나 결론을 정리하세요." if last_round else "")
+        )
+        user = (
+            f"[대화 주제] {topic}\n\n"
+            f"[지금까지의 대화]\n{prior}\n\n"
+            f"이제 {speaker['role']}로서 발언하세요."
+        )
+        say = chat(system, user, max_tokens=400)
+        transcript.append((speaker["role"], say))
+    return transcript
+
+
 llm_config = {
     "config_list": [{
         "model": "local-model",

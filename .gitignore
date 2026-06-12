@@ -1,0 +1,13 @@
+# 비밀 정보 — 절대 커밋 금지
+ai-employee/config.py
+ai-employee/credentials.json
+ai-employee/token.json
+
+# 런타임 산출물
+ai-employee/venv/
+ai-employee/logs/
+ai-employee/models/
+ai-employee/memory_db/
+__pycache__/
+*.pyc
+.DS_Store
