@@ -69,7 +69,7 @@ start_cpu() {
     export DYLD_LIBRARY_PATH="$LLAMA_DIR/build/bin:/usr/local/lib:$DYLD_LIBRARY_PATH"
     CPU_CORES="$(sysctl -n hw.physicalcpu)"
     CPU_THREADS="$(sysctl -n hw.logicalcpu)"
-    info "CPU 모드 시작 (${CPU_CORES}코어 생성 / ${CPU_THREADS}스레드 배치)" >&2
+    info "CPU 모드 시작 (${CPU_CORES}코어 생성 / ${CPU_THREADS}스레드 배치, i9-10900K 최적화)" >&2
     "$bin" \
         -m "$MODEL" \
         -ngl 0 \
@@ -77,6 +77,9 @@ start_cpu() {
         -tb "$CPU_THREADS" \
         -c 8192 \
         -b 512 \
+        -ub 512 \
+        --flash-attn \
+        --mlock \
         --no-warmup \
         --host 0.0.0.0 \
         --port 11434 \
