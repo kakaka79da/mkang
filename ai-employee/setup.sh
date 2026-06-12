@@ -128,18 +128,21 @@ fi
 echo "  HF 명령어: $HF_CMD"
 
 # 용량 기준 자동 모델 선택
+# Qwen3-30B-A3B: MoE 구조, 활성 파라미터 3.3B → CPU에서 10~15 t/s
 if [ "$AVAIL" -ge 20 ]; then
-    REPO="unsloth/gpt-oss-20b-GGUF"
-    FILE="gpt-oss-20b-Q5_K_M.gguf"
-    echo "  → 20GB 이상: GPT-OSS 20B Q5_K_M 선택 (~13.7GB, o3-mini 수준)"
-elif [ "$AVAIL" -ge 14 ]; then
-    REPO="bartowski/Qwen_Qwen3-14B-GGUF"
-    FILE="Qwen_Qwen3-14B-Q4_K_M.gguf"
-    echo "  → 14GB 이상: Qwen3 14B Q4_K_M 선택 (~8.4GB)"
-else
+    REPO="unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF"
+    FILE="Qwen3-30B-A3B-Instruct-2507-Q4_K_M.gguf"
+    echo "  → 20GB 이상: Qwen3-30B-A3B Q4_K_M 선택 (~18.6GB, MoE 10~15 t/s)"
+elif [ "$AVAIL" -ge 16 ]; then
+    REPO="unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF"
+    FILE="Qwen3-30B-A3B-Instruct-2507-Q3_K_M.gguf"
+    echo "  → 16GB 이상: Qwen3-30B-A3B Q3_K_M 선택 (~14.7GB, MoE 절충)"
+elif [ "$AVAIL" -ge 10 ]; then
     REPO="bartowski/Qwen_Qwen3-8B-GGUF"
     FILE="Qwen_Qwen3-8B-Q4_K_M.gguf"
-    echo "  → 14GB 미만: Qwen3 8B Q4_K_M 선택 (~5GB)"
+    echo "  → 16GB 미만: Qwen3 8B Q4_K_M 선택 (~5GB)"
+else
+    err "저장 공간이 너무 부족합니다 (${AVAIL}GB). 최소 10GB 필요."
 fi
 
 MODEL_PATH="$DIR/models/$FILE"

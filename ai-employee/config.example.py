@@ -18,8 +18,8 @@ LLM_PARALLEL = 1
 #   ≥20GB: gpt-oss-20b-Q5_K_M.gguf   (~13.7GB)
 #   ≥14GB: Qwen_Qwen3-14B-Q4_K_M.gguf (~8.4GB)
 #   <14GB:  Qwen_Qwen3-8B-Q4_K_M.gguf  (~5GB)
-MODEL_MAIN = "~/mkang/ai-employee/models/Qwen_Qwen3-8B-Q4_K_M.gguf"
-MODEL_HQ   = "~/mkang/ai-employee/models/Qwen_Qwen3-14B-Q4_K_M.gguf"
+MODEL_MAIN = "~/mkang/ai-employee/models/Qwen3-30B-A3B-Instruct-2507-Q4_K_M.gguf"
+MODEL_HQ   = "~/mkang/ai-employee/models/Qwen3-30B-A3B-Instruct-2507-Q4_K_M.gguf"
 
 # ─── 에이전트 네트워크 ──────────────────────────────────────────────────────
 MACHINE_ID   = "iMac-Node-1"            # 이 컴퓨터의 고유 이름
