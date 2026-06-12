@@ -52,11 +52,10 @@ AMD Radeon Pro 5700 XT는 **Linux + ROCm**에서 완벽 작동:
   Linux ROCm GPU: 50~80 t/s  (5~8배 빠름)
 ```
 
-Linux 설치 방법:
-1. Ubuntu 24.04 USB 부팅 디스크 생성
-2. iMac에서 Option 키 누른 채 부팅 → USB 선택
-3. 파티션 분할 설치 (듀얼 부팅) 또는 macOS 대체 설치
-4. `bash ~/mkang/ai-employee/linux_gpu_setup.sh` 실행 (ROCm + llama.cpp 자동 설치)
+듀얼 부팅 구성 방법: **[DUALBOOT_GUIDE.md](DUALBOOT_GUIDE.md)** 참고
+1. macOS에서 `bash dualboot_prepare.sh 250` (ISO/USB/파티션 자동 준비)
+2. 복구 모드에서 시동 보안 해제 (T2 칩)
+3. Ubuntu 설치 후 `bash linux_ai_setup.sh` (ROCm + AI 시스템 + 자동 시작)
 
 ---
 

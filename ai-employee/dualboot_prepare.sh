@@ -1,0 +1,184 @@
+#!/bin/bash
+# ============================================================
+# 듀얼 부팅 1단계 — macOS 에서 실행하는 준비 스크립트
+#
+#   bash dualboot_prepare.sh [리눅스용 용량 GB, 기본 250]
+#
+# 하는 일:
+#   1. T2 칩 / 디스크 여유 / FileVault 확인
+#   2. t2linux Ubuntu ISO 다운로드 (iMac 2020 은 T2 칩 때문에
+#      일반 Ubuntu ISO 로는 내장 SSD 인식 불가)
+#   3. USB 부팅 디스크 제작 (16GB 이상 USB 필요)
+#   4. WiFi/블루투스 펌웨어 추출 (Linux 에서 무선랜 쓰려면 필수)
+#   5. APFS 파티션 축소 → Linux 용 빈 공간 확보
+#
+# 이후 수동 단계는 DUALBOOT_GUIDE.md 참고
+# ============================================================
+set -e
+
+GREEN="\033[32m"; YELLOW="\033[33m"; RED="\033[31m"; BOLD="\033[1m"; RESET="\033[0m"
+ok()   { echo -e "${GREEN}✅ $1${RESET}"; }
+info() { echo -e "${YELLOW}▶  $1${RESET}"; }
+warn() { echo -e "${YELLOW}⚠️  $1${RESET}"; }
+fail() { echo -e "${RED}❌ $1${RESET}"; }
+
+LINUX_GB="${1:-250}"
+WORK="$HOME/Downloads/t2ubuntu"
+mkdir -p "$WORK"
+
+echo -e "${BOLD}"
+echo "============================================================"
+echo "  iMac 듀얼 부팅 준비 — Ubuntu (t2linux) + macOS"
+echo "  Linux 파티션 크기: ${LINUX_GB}GB"
+echo "============================================================"
+echo -e "${RESET}"
+
+# ── 1. 시스템 확인 ───────────────────────────────────────────
+info "[1/5] 시스템 확인"
+
+MODEL_ID=$(sysctl -n hw.model)
+echo "  모델: $MODEL_ID"
+if system_profiler SPiBridgeDataType 2>/dev/null | grep -q "T2"; then
+    ok "Apple T2 칩 확인 — t2linux ISO 사용 (올바른 선택)"
+    HAS_T2=1
+else
+    warn "T2 칩 미감지 — 일반 Ubuntu ISO 도 가능하지만 t2linux ISO 로 진행 (해 될 것 없음)"
+    HAS_T2=0
+fi
+
+# FileVault 켜져 있으면 Linux 에서 macOS 파티션(모델 파일) 못 읽음 — 경고만
+if fdesetup status | grep -q "On"; then
+    warn "FileVault 켜짐 — Linux 에서 macOS 의 모델 파일을 직접 못 읽으므로"
+    echo "     Linux 쪽에서 모델을 새로 다운로드하게 됩니다 (자동 처리됨)."
+fi
+
+AVAIL=$(df -g / | awk 'NR==2{print $4}')
+echo "  디스크 여유: ${AVAIL}GB"
+NEED=$((LINUX_GB + 30))   # macOS 쪽에도 최소 30GB 여유 유지
+if [ "$AVAIL" -lt "$NEED" ]; then
+    fail "여유 공간 부족: Linux ${LINUX_GB}GB + macOS 여유 30GB = ${NEED}GB 필요"
+    echo "  bash dualboot_prepare.sh 150  처럼 작은 크기로 다시 실행하거나 공간을 비우세요."
+    exit 1
+fi
+ok "공간 충분"
+
+echo ""
+warn "시작 전에 Time Machine 등으로 백업을 권장합니다. 파티션 작업은 되돌리기 어렵습니다."
+read -r -p "  계속하시겠습니까? (yes 입력): " GO
+[ "$GO" != "yes" ] && echo "중단됨" && exit 0
+
+# ── 2. t2linux Ubuntu ISO 다운로드 ───────────────────────────
+info "[2/5] t2linux Ubuntu ISO 다운로드"
+ISO="$WORK/ubuntu-t2.iso"
+
+if [ -f "$ISO" ]; then
+    ok "이미 다운로드됨: $ISO — 건너뜀"
+else
+    API="https://api.github.com/repos/t2linux/T2-Ubuntu/releases/latest"
+    echo "  최신 릴리스 확인 중..."
+    URLS=$(curl -fsSL "$API" | grep -oE '"browser_download_url": *"[^"]+"' \
+           | grep -oE 'https://[^"]+' | grep -E '\.iso(\.[0-9]+)?$' | sort)
+    if [ -z "$URLS" ]; then
+        fail "릴리스 조회 실패. 수동 다운로드: https://github.com/t2linux/T2-Ubuntu/releases"
+        exit 1
+    fi
+    N=$(echo "$URLS" | wc -l | tr -d ' ')
+    echo "  파일 ${N}개 다운로드 (총 5~6GB, 시간 소요)..."
+    cd "$WORK"
+    for U in $URLS; do
+        echo "  ↓ $(basename "$U")"
+        curl -fL -C - -O "$U"
+    done
+    # 분할 파일(.iso.00, .iso.01...)이면 합치기, 단일 .iso 면 그대로 사용
+    if ls ./*.iso.0* >/dev/null 2>&1; then
+        echo "  분할 파일 합치는 중..."
+        cat ./*.iso.0* > "$ISO"
+        rm -f ./*.iso.0*
+    else
+        FIRST=$(ls ./*.iso | head -1)
+        [ "$FIRST" != "$ISO" ] && mv "$FIRST" "$ISO"
+    fi
+    ok "ISO 준비 완료: $ISO ($(du -h "$ISO" | cut -f1))"
+fi
+
+# ── 3. USB 부팅 디스크 제작 ──────────────────────────────────
+info "[3/5] USB 부팅 디스크 제작 (16GB 이상 USB 를 꽂으세요)"
+echo ""
+diskutil list external physical || true
+echo ""
+read -r -p "  USB 디스크 식별자 입력 (예: disk4, 건너뛰려면 엔터): " USB
+
+if [ -n "$USB" ]; then
+    USB="${USB#/dev/}"
+    diskutil info "$USB" >/dev/null 2>&1 || { fail "디스크 없음: $USB"; exit 1; }
+    if [ "$(diskutil info "$USB" | awk -F': *' '/Internal/{print $2}' | head -1 | xargs)" = "Yes" ]; then
+        fail "$USB 는 내장 디스크입니다! 외장 USB 를 지정하세요."
+        exit 1
+    fi
+    echo ""
+    warn "$USB 의 모든 데이터가 지워집니다!"
+    diskutil info "$USB" | grep -E "Device / Media Name|Disk Size" | sed 's/^/    /'
+    read -r -p "  정말 지우고 USB 부팅 디스크를 만들까요? (ERASE 입력): " C
+    if [ "$C" = "ERASE" ]; then
+        diskutil unmountDisk force "/dev/$USB"
+        echo "  기록 중 (10~20분, 진행 표시 없어도 정상)..."
+        sudo dd if="$ISO" of="/dev/r$USB" bs=4m
+        sync
+        ok "USB 부팅 디스크 완성"
+        diskutil eject "/dev/$USB" 2>/dev/null || true
+    else
+        warn "USB 제작 건너뜀"
+    fi
+else
+    warn "USB 제작 건너뜀 — 나중에 이 스크립트를 다시 실행하면 됩니다 (ISO 재다운로드 안 함)"
+fi
+
+# ── 4. WiFi/블루투스 펌웨어 추출 ─────────────────────────────
+info "[4/5] WiFi/블루투스 펌웨어 추출 (t2linux 공식 스크립트)"
+echo "  Linux 는 맥 무선랜 펌웨어를 macOS 에서 가져와야 합니다."
+echo "  곧 나오는 질문에서 기본값(엔터)을 선택하면 EFI 파티션에 저장되고,"
+echo "  Ubuntu 설치 후 자동으로 인식됩니다."
+echo ""
+curl -fsSL https://wiki.t2linux.org/tools/firmware.sh | bash || \
+    warn "펌웨어 추출 실패 — 설치 후 유선랜으로 인터넷 연결하면 우회 가능"
+
+# ── 5. APFS 파티션 축소 ──────────────────────────────────────
+info "[5/5] APFS 파티션 ${LINUX_GB}GB 축소 → Linux 용 빈 공간 확보"
+
+CONT=$(diskutil info / | awk -F': *' '/Part of Whole/{print $2}' | xargs)
+CONT_BYTES=$(diskutil info "$CONT" | grep "Disk Size" | grep -oE '\(([0-9]+) Bytes' | grep -oE '[0-9]+')
+CONT_GB=$((CONT_BYTES / 1000000000))
+NEW_GB=$((CONT_GB - LINUX_GB))
+echo "  컨테이너: $CONT (${CONT_GB}GB) → ${NEW_GB}GB 로 축소"
+echo ""
+read -r -p "  파티션을 지금 축소할까요? (yes 입력): " SH
+if [ "$SH" = "yes" ]; then
+    echo "  로컬 스냅샷 정리 중 (축소 실패 방지)..."
+    tmutil deletelocalsnapshots / 2>/dev/null || true
+    echo "  축소 중 (수 분 소요)..."
+    if sudo diskutil apfs resizeContainer "$CONT" "${NEW_GB}g"; then
+        ok "축소 완료 — ${LINUX_GB}GB 빈 공간 확보"
+    else
+        fail "축소 실패. 흔한 원인: 스냅샷/파일 단편화"
+        echo "  → 재부팅 후 다시 실행하거나, 더 작은 크기로 시도하세요."
+        exit 1
+    fi
+else
+    warn "파티션 축소 건너뜀 — Ubuntu 설치 전에 반드시 필요합니다"
+fi
+
+# ── 완료 안내 ────────────────────────────────────────────────
+echo ""
+echo "============================================================"
+ok "macOS 쪽 준비 끝! 다음은 수동 단계입니다 (DUALBOOT_GUIDE.md)"
+echo ""
+echo "  ① 재시동 → 즉시 Cmd(⌘)+R 꾹 → 복구 모드"
+echo "     유틸리티 메뉴 > 시동 보안 유틸리티:"
+echo "       - 보안 없음(No Security) 선택"
+echo "       - 외부 미디어 부팅 허용 선택"
+echo "  ② 재시동 → 즉시 Option(⌥) 꾹 → 'EFI Boot'(USB) 선택"
+echo "  ③ Ubuntu 설치 (빈 공간에 자동 설치됨)"
+echo "  ④ Ubuntu 부팅 후:"
+echo "     git clone https://github.com/kakaka79da/mkang ~/mkang"
+echo "     bash ~/mkang/ai-employee/linux_ai_setup.sh"
+echo "============================================================"
