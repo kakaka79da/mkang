@@ -96,33 +96,57 @@ read -r -p "  계속하시겠습니까? (yes 입력): " GO
 # ── 2. Ubuntu ISO 다운로드 (T2 유무에 따라 자동 선택) ────────
 ISO="$WORK/ubuntu-imac.iso"
 
+# 이미 받아둔 ISO 가 있어도 크기가 9GB 초과면 잘못된 파일로 보고 다시 받는다
+# (t2linux/Ubuntu ISO 는 정상 시 4~7GB — 여러 ISO 잘못 합쳐진 경우 자동 삭제)
 if [ -f "$ISO" ]; then
-    info "[2/5] ISO 이미 다운로드됨 — 건너뜀"
+    ISO_GB=$(du -g "$ISO" | cut -f1)
+    if [ "${ISO_GB:-0}" -gt 9 ]; then
+        warn "ISO 크기 이상 (${ISO_GB}GB — 잘못된 다운로드). 삭제 후 재다운로드합니다."
+        rm -f "$ISO" "$WORK"/*.iso* 2>/dev/null || true
+    fi
+fi
+
+if [ -f "$ISO" ]; then
+    ISO_GB=$(du -g "$ISO" | cut -f1)
+    info "[2/5] ISO 이미 다운로드됨 (${ISO_GB}GB) — 건너뜀"
 elif [ "$HAS_T2" = "1" ]; then
     info "[2/5] t2linux Ubuntu ISO 다운로드 (T2 맥 전용 패치판)"
     API="https://api.github.com/repos/t2linux/T2-Ubuntu/releases/latest"
     echo "  최신 릴리스 확인 중..."
-    URLS=$(curl -fsSL "$API" | grep -oE '"browser_download_url": *"[^"]+"' \
-           | grep -oE 'https://[^"]+' | grep -E '\.iso(\.[0-9]+)?$' | sort)
-    if [ -z "$URLS" ]; then
+    ALL_ASSET_URLS=$(curl -fsSL "$API" \
+        | grep -oE '"browser_download_url": *"[^"]+"' \
+        | grep -oE 'https://[^"]+' \
+        | grep -E '\.(iso|iso\.[0-9a-z]+)$' | sort || true)
+    if [ -z "$ALL_ASSET_URLS" ]; then
         fail "릴리스 조회 실패. 수동 다운로드: https://github.com/t2linux/T2-Ubuntu/releases"
         exit 1
     fi
+    # 분할 파일이 있으면 첫 번째 ISO 시리즈만 선택 (여러 ISO 섞임 방지)
+    if echo "$ALL_ASSET_URLS" | grep -qE '\.iso\.[0-9]+$'; then
+        BASE_URL=$(echo "$ALL_ASSET_URLS" | grep -E '\.iso\.[0-9]+$' | head -1 | sed -E 's/\.[0-9]+$//')
+        URLS=$(echo "$ALL_ASSET_URLS" | grep "^${BASE_URL}")
+    else
+        URLS=$(echo "$ALL_ASSET_URLS" | grep -E '\.iso$' | head -1)
+    fi
     N=$(echo "$URLS" | wc -l | tr -d ' ')
-    echo "  파일 ${N}개 다운로드 (총 5~6GB, 시간 소요)..."
+    echo "  파일 ${N}개 다운로드 (총 4~7GB, 시간 소요)..."
     cd "$WORK"
     for U in $URLS; do
         echo "  ↓ $(basename "$U")"
         curl -fL -C - -O "$U"
     done
-    # 분할 파일(.iso.00, .iso.01...)이면 합치기, 단일 .iso 면 그대로 사용
-    if ls ./*.iso.0* >/dev/null 2>&1; then
+    if ls ./*.iso.[0-9]* >/dev/null 2>&1; then
         echo "  분할 파일 합치는 중..."
-        cat ./*.iso.0* > "$ISO"
-        rm -f ./*.iso.0*
+        cat ./*.iso.[0-9]* > "$ISO"
+        rm -f ./*.iso.[0-9]*
     else
-        FIRST=$(ls ./*.iso | head -1)
-        [ "$FIRST" != "$ISO" ] && mv "$FIRST" "$ISO"
+        FIRST=$(ls ./*.iso 2>/dev/null | grep -v "ubuntu-imac.iso" | head -1 || true)
+        [ -n "$FIRST" ] && [ "$FIRST" != "$ISO" ] && mv "$FIRST" "$ISO"
+    fi
+    ISO_GB=$(du -g "$ISO" 2>/dev/null | cut -f1 || echo 0)
+    if [ "${ISO_GB:-0}" -gt 9 ]; then
+        fail "ISO 크기 이상: ${ISO_GB}GB — 다운로드 오류. 다시 실행해 보세요."
+        exit 1
     fi
     ok "ISO 준비 완료: $ISO ($(du -h "$ISO" | cut -f1))"
 else
@@ -154,6 +178,15 @@ if [ -n "$USB" ]; then
     diskutil info "$USB" | grep -E "Device / Media Name|Disk Size" | sed 's/^/    /'
     read -r -p "  정말 지우고 USB 부팅 디스크를 만들까요? (ERASE 입력): " C
     if [ "$C" = "ERASE" ]; then
+        # ISO 가 USB 에 들어가는지 크기 확인
+        ISO_BYTES=$(stat -f%z "$ISO" 2>/dev/null || stat -c%s "$ISO" 2>/dev/null || echo 0)
+        USB_BYTES=$(diskutil info "$USB" | tr -d ',' | grep -oE 'Disk Size: *[0-9]+ Bytes' | grep -oE '[0-9]+ Bytes' | head -1 | grep -oE '^[0-9]+' || echo 0)
+        if [ "${ISO_BYTES:-0}" -gt "${USB_BYTES:-0}" ] && [ "${USB_BYTES:-0}" -gt 0 ]; then
+            ISO_H=$(du -h "$ISO" | cut -f1)
+            USB_H=$(diskutil info "$USB" | grep "Disk Size" | head -1 | grep -oE '[0-9.]+ GB' | head -1)
+            fail "ISO(${ISO_H})가 USB(${USB_H:-$USB})보다 큽니다. 더 큰 USB가 필요합니다."
+            exit 1
+        fi
         diskutil unmountDisk force "/dev/$USB"
         echo "  기록 중 (10~20분, 진행 표시 없어도 정상)..."
         sudo dd if="$ISO" of="/dev/r$USB" bs=4m
@@ -174,8 +207,14 @@ if [ "$HAS_T2" = "1" ]; then
     echo "  곧 나오는 질문에서 기본값(엔터)을 선택하면 EFI 파티션에 저장되고,"
     echo "  Ubuntu 설치 후 자동으로 인식됩니다."
     echo ""
-    curl -fsSL https://wiki.t2linux.org/tools/firmware.sh | bash || \
-        warn "펌웨어 추출 실패 — 설치 후 유선랜으로 인터넷 연결하면 우회 가능"
+    # 옵션 1(EFI 파티션에 저장)을 자동 선택해 비대화형으로 실행
+    curl -fsSL https://wiki.t2linux.org/tools/firmware.sh -o /tmp/t2_firmware.sh || true
+    if [ -f /tmp/t2_firmware.sh ]; then
+        echo "1" | bash /tmp/t2_firmware.sh || \
+            warn "펌웨어 추출 실패 — 설치 후 유선랜으로 인터넷 연결하면 우회 가능"
+    else
+        warn "펌웨어 스크립트 다운로드 실패 — 설치 후 유선랜으로 우회 가능"
+    fi
 else
     info "[4/5] 펌웨어 추출 건너뜀 (T2 없음)"
     echo "  설치 중 WiFi 가 안 잡히면 아이맥 뒷면 유선랜(이더넷)을 연결하세요."
@@ -183,8 +222,12 @@ else
 fi
 
 # 텔레그램 /switch (OS 전환) 도구 — macOS 쪽 설치
-bash "$(dirname "$0")/setup_os_switch.sh" || \
-    warn "OS 전환 도구 설치 실패 — 나중에 setup_os_switch.sh 를 직접 실행하세요"
+if [ -f "$DIR/setup_os_switch.sh" ]; then
+    bash "$DIR/setup_os_switch.sh" || \
+        warn "OS 전환 도구 설치 실패 — 나중에 setup_os_switch.sh 를 직접 실행하세요"
+else
+    warn "setup_os_switch.sh 없음 — git pull 후 재실행하면 자동 설치됩니다"
+fi
 
 # ── 5. APFS 파티션 축소 ──────────────────────────────────────
 info "[5/5] APFS 파티션 ${LINUX_GB}GB 축소 → Linux 용 빈 공간 확보"
