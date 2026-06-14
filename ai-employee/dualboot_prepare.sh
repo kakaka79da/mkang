@@ -52,15 +52,23 @@ if fdesetup status | grep -q "On"; then
     echo "     Linux 쪽에서 모델을 새로 다운로드하게 됩니다 (자동 처리됨)."
 fi
 
-AVAIL=$(df -g / | awk 'NR==2{print $4}')
-echo "  디스크 여유: ${AVAIL}GB"
+# diskutil info 로 실제 여유(Free + Purgeable) 파악
+# df 는 로컬 Time Machine 스냅샷을 "사용 중"으로 잡아 실제보다 적게 나온다
+DI_OUT=$(diskutil info / 2>/dev/null)
+FREE_B=$(echo "$DI_OUT"    | grep -E "Volume Free Space"     | grep -oE '[0-9]+ Bytes' | head -1 | grep -oE '[0-9]+')
+PURG_B=$(echo "$DI_OUT"    | grep -E "Volume Purgeable Space"| grep -oE '[0-9]+ Bytes' | head -1 | grep -oE '[0-9]+')
+FREE_B=${FREE_B:-0}; PURG_B=${PURG_B:-0}
+AVAIL=$(( (FREE_B + PURG_B) / 1073741824 ))
+# diskutil 파싱 실패 시 df 폴백
+[ "$AVAIL" -eq 0 ] && AVAIL=$(df -g / | awk 'NR==2{print $4}')
+echo "  디스크 여유: ${AVAIL}GB (Free + Purgeable — Time Machine 스냅샷 포함)"
 NEED=$((LINUX_GB + 30))   # macOS 쪽에도 최소 30GB 여유 유지
 if [ "$AVAIL" -lt "$NEED" ]; then
-    fail "여유 공간 부족: Linux ${LINUX_GB}GB + macOS 여유 30GB = ${NEED}GB 필요"
+    fail "여유 공간 부족: Linux ${LINUX_GB}GB + macOS 여유 30GB = ${NEED}GB 필요, 현재 ${AVAIL}GB"
     echo "  bash dualboot_prepare.sh 150  처럼 작은 크기로 다시 실행하거나 공간을 비우세요."
     exit 1
 fi
-ok "공간 충분"
+ok "공간 충분 (${AVAIL}GB 확인)"
 
 echo ""
 warn "시작 전에 Time Machine 등으로 백업을 권장합니다. 파티션 작업은 되돌리기 어렵습니다."
