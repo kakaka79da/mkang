@@ -184,7 +184,12 @@ if [ -n "$USB" ]; then
     echo ""
     warn "$USB 의 모든 데이터가 지워집니다!"
     diskutil info "$USB" | grep -E "Device / Media Name|Disk Size" | sed 's/^/    /'
-    read -r -p "  정말 지우고 USB 부팅 디스크를 만들까요? (ERASE 입력): " C
+    echo ""
+    echo "  ┌─────────────────────────────────────────┐"
+    echo "  │  확인: 대문자로  ERASE  를 입력하세요   │"
+    echo "  │  (취소하려면 엔터만 누르세요)           │"
+    echo "  └─────────────────────────────────────────┘"
+    read -r -p "  입력: " C
     if [ "$C" = "ERASE" ]; then
         # ISO 가 USB 에 들어가는지 크기 확인
         ISO_BYTES=$(stat -f%z "$ISO" 2>/dev/null || stat -c%s "$ISO" 2>/dev/null || echo 0)
@@ -261,8 +266,8 @@ if [ "$SH" = "yes" ]; then
     echo "  로컬 스냅샷 정리 중 (축소 실패 방지)..."
     tmutil deletelocalsnapshots / 2>/dev/null || true
     echo "  축소 중 (수 분 소요)..."
-    RESIZE_OUT=$(sudo diskutil apfs resizeContainer "$CONT" "${NEW_GB}g" 2>&1)
-    RESIZE_RC=$?
+    RESIZE_RC=0
+    RESIZE_OUT=$(sudo diskutil apfs resizeContainer "$CONT" "${NEW_GB}g" 2>&1) || RESIZE_RC=$?
     echo "$RESIZE_OUT" | tail -5 | sed 's/^/    /'
     if [ "$RESIZE_RC" = "0" ]; then
         ok "축소 완료 — ${LINUX_GB}GB 빈 공간 확보"
