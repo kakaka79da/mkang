@@ -52,16 +52,20 @@ if fdesetup status | grep -q "On"; then
     echo "     Linux 쪽에서 모델을 새로 다운로드하게 됩니다 (자동 처리됨)."
 fi
 
-# diskutil info 로 실제 여유(Free + Purgeable) 파악
-# df 는 로컬 Time Machine 스냅샷을 "사용 중"으로 잡아 실제보다 적게 나온다
-DI_OUT=$(diskutil info / 2>/dev/null)
-FREE_B=$(echo "$DI_OUT"    | grep -E "Volume Free Space"     | grep -oE '[0-9]+ Bytes' | head -1 | grep -oE '[0-9]+')
-PURG_B=$(echo "$DI_OUT"    | grep -E "Volume Purgeable Space"| grep -oE '[0-9]+ Bytes' | head -1 | grep -oE '[0-9]+')
-FREE_B=${FREE_B:-0}; PURG_B=${PURG_B:-0}
-AVAIL=$(( (FREE_B + PURG_B) / 1073741824 ))
-# diskutil 파싱 실패 시 df 폴백
-[ "$AVAIL" -eq 0 ] && AVAIL=$(df -g / | awk 'NR==2{print $4}')
-echo "  디스크 여유: ${AVAIL}GB (Free + Purgeable — Time Machine 스냅샷 포함)"
+# 실제 여유 공간 파악.
+# df 는 로컬 Time Machine 스냅샷을 "사용 중"으로 잡아 실제보다 적게 나오므로
+# diskutil 의 Free Space(쉼표 제거)와 df 중 큰 값을 쓴다.
+# (grep 실패가 set -e 로 스크립트를 죽이지 않도록 모두 || true)
+DF_AVAIL=$(df -g / | awk 'NR==2{print $4}' || true)
+DF_AVAIL=${DF_AVAIL:-0}
+DI_OUT=$(diskutil info / 2>/dev/null || true)
+# 쉼표 제거 후 6자리 이상 바이트 값만 추출 (첫 매치 = Container Free Space)
+DU_BYTES=$(echo "$DI_OUT" | grep -Ei "Free Space|Available Space" \
+           | tr -d ',' | grep -oE '[0-9]{6,} Bytes' | head -1 | grep -oE '[0-9]+' || true)
+DU_AVAIL=$(( ${DU_BYTES:-0} / 1000000000 ))
+AVAIL=$DF_AVAIL
+[ "${DU_AVAIL:-0}" -gt "$AVAIL" ] && AVAIL=$DU_AVAIL
+echo "  디스크 여유: ${AVAIL}GB (df=${DF_AVAIL}GB, diskutil=${DU_AVAIL}GB 중 큰 값)"
 NEED=$((LINUX_GB + 30))   # macOS 쪽에도 최소 30GB 여유 유지
 if [ "$AVAIL" -lt "$NEED" ]; then
     fail "여유 공간 부족: Linux ${LINUX_GB}GB + macOS 여유 30GB = ${NEED}GB 필요, 현재 ${AVAIL}GB"
