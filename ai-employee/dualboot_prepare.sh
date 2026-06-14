@@ -249,8 +249,24 @@ if [ "$SH" = "yes" ]; then
     echo "  로컬 스냅샷 정리 중 (축소 실패 방지)..."
     tmutil deletelocalsnapshots / 2>/dev/null || true
     echo "  축소 중 (수 분 소요)..."
-    if sudo diskutil apfs resizeContainer "$CONT" "${NEW_GB}g"; then
+    RESIZE_OUT=$(sudo diskutil apfs resizeContainer "$CONT" "${NEW_GB}g" 2>&1)
+    RESIZE_RC=$?
+    echo "$RESIZE_OUT" | tail -5 | sed 's/^/    /'
+    if [ "$RESIZE_RC" = "0" ]; then
         ok "축소 완료 — ${LINUX_GB}GB 빈 공간 확보"
+    elif echo "$RESIZE_OUT" | grep -qiE "could not be verified|corrupt|-69716|verify or repair failed"; then
+        # 파일시스템 손상으로 macOS 가 축소를 막은 경우 — First Aid 필요
+        fail "파일시스템 손상 감지 — 축소가 중단되었습니다 (디스크는 안전, 변경 없음)"
+        echo ""
+        echo "  ▶ 디스크에 경미한 손상이 있어 macOS 가 안전을 위해 멈췄습니다."
+        echo "    복구 모드에서 First Aid 로 고친 뒤 다시 실행하세요:"
+        echo ""
+        echo "    1. 재시동 → 즉시 ⌘+R 꾹 (복구 모드 진입)"
+        echo "    2. 디스크 유틸리티 → 보기 > 모든 기기 표시"
+        echo "    3. 'Macintosh HD - Data' 포함 각 볼륨에 First Aid(검사) 실행"
+        echo "    4. 재시동(일반 부팅) 후:"
+        echo "       cd ~/mkang && bash ai-employee/dualboot_prepare.sh ${LINUX_GB}"
+        exit 1
     else
         fail "축소 실패. 흔한 원인: 스냅샷/파일 단편화"
         echo "  → 재부팅 후 다시 실행하거나, 더 작은 크기로 시도하세요."
