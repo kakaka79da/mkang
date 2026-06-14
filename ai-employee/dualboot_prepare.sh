@@ -22,7 +22,13 @@ info() { echo -e "${YELLOW}▶  $1${RESET}"; }
 warn() { echo -e "${YELLOW}⚠️  $1${RESET}"; }
 fail() { echo -e "${RED}❌ $1${RESET}"; }
 
-LINUX_GB="${1:-250}"
+# 인자에서 숫자만 추출 (터미널 붙여넣기로 '180~' 같은 잡문자가 붙어도 안전)
+LINUX_GB=$(echo "${1:-250}" | tr -cd '0-9')
+LINUX_GB="${LINUX_GB:-250}"
+if [ "$LINUX_GB" -lt 50 ] 2>/dev/null; then
+    echo "Linux 파티션 크기가 너무 작습니다($LINUX_GB GB). 최소 50GB 이상으로 지정하세요."
+    exit 1
+fi
 WORK="$HOME/Downloads/t2ubuntu"
 mkdir -p "$WORK"
 
