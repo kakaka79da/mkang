@@ -52,6 +52,20 @@ if fdesetup status | grep -q "On"; then
     echo "     Linux 쪽에서 모델을 새로 다운로드하게 됩니다 (자동 처리됨)."
 fi
 
+# 측정 전에 로컬 Time Machine 스냅샷을 정리한다.
+# 스냅샷(purgeable)이 수십 GB 의 가용 공간을 점유하는데, 파티션 축소 때
+# 어차피 비워야 하므로 미리 지워 실제 가용 공간을 확보한다.
+info "로컬 Time Machine 스냅샷 정리 중 (공간 확보, 수 초 소요)..."
+SNAPS=$(tmutil listlocalsnapshots / 2>/dev/null | grep -c "com.apple" || true)
+if [ "${SNAPS:-0}" -gt 0 ]; then
+    tmutil deletelocalsnapshots / >/dev/null 2>&1 || \
+        sudo tmutil deletelocalsnapshots / >/dev/null 2>&1 || true
+    echo "  스냅샷 ${SNAPS}개 정리 완료"
+    sleep 2
+else
+    echo "  정리할 스냅샷 없음"
+fi
+
 # 실제 여유 공간 파악.
 # df 는 로컬 Time Machine 스냅샷을 "사용 중"으로 잡아 실제보다 적게 나오므로
 # diskutil 의 Free Space(쉼표 제거)와 df 중 큰 값을 쓴다.
