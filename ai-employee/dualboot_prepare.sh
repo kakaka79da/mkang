@@ -22,6 +22,8 @@ info() { echo -e "${YELLOW}▶  $1${RESET}"; }
 warn() { echo -e "${YELLOW}⚠️  $1${RESET}"; }
 fail() { echo -e "${RED}❌ $1${RESET}"; }
 
+DIR="$(cd "$(dirname "$0")" && pwd)"
+
 # 인자에서 숫자만 추출 (터미널 붙여넣기로 '180~' 같은 잡문자가 붙어도 안전)
 LINUX_GB=$(echo "${1:-250}" | tr -cd '0-9')
 LINUX_GB="${LINUX_GB:-250}"
@@ -216,8 +218,18 @@ if [ "$HAS_T2" = "1" ]; then
     # 옵션 1(EFI 파티션에 저장)을 자동 선택해 비대화형으로 실행
     curl -fsSL https://wiki.t2linux.org/tools/firmware.sh -o /tmp/t2_firmware.sh || true
     if [ -f /tmp/t2_firmware.sh ]; then
-        echo "1" | bash /tmp/t2_firmware.sh || \
+        # exit code 무시 (gzip "already exists" 가 비-0 을 반환해도 실제로는 성공)
+        echo "1" | bash /tmp/t2_firmware.sh 2>&1 || true
+        # EFI 파티션에 펌웨어가 있는지로 실제 성공 여부 판단
+        EFI_FIRM=""
+        diskutil mount disk0s1 >/dev/null 2>&1 || true
+        [ -f "/Volumes/EFI/firmware-raw.tar.gz" ] && EFI_FIRM="found"
+        diskutil unmount disk0s1 >/dev/null 2>&1 || true
+        if [ -n "$EFI_FIRM" ]; then
+            ok "WiFi/블루투스 펌웨어 EFI 파티션에 저장됨"
+        else
             warn "펌웨어 추출 실패 — 설치 후 유선랜으로 인터넷 연결하면 우회 가능"
+        fi
     else
         warn "펌웨어 스크립트 다운로드 실패 — 설치 후 유선랜으로 우회 가능"
     fi
