@@ -64,15 +64,26 @@ fi
 # 스냅샷(purgeable)이 수십 GB 의 가용 공간을 점유하는데, 파티션 축소 때
 # 어차피 비워야 하므로 미리 지워 실제 가용 공간을 확보한다.
 info "로컬 Time Machine 스냅샷 정리 중 (공간 확보, 수 초 소요)..."
+# Time Machine 일시 중단 — 정리 중 새 스냅샷 생성 방지
+sudo tmutil disable >/dev/null 2>&1 || true
 SNAPS=$(tmutil listlocalsnapshots / 2>/dev/null | grep -c "com.apple" || true)
-if [ "${SNAPS:-0}" -gt 0 ]; then
+SNAPS2=$(tmutil listlocalsnapshots /System/Volumes/Data 2>/dev/null | grep -c "com.apple" || true)
+TOTAL=$((${SNAPS:-0} + ${SNAPS2:-0}))
+if [ "${TOTAL:-0}" -gt 0 ]; then
     tmutil deletelocalsnapshots / >/dev/null 2>&1 || \
         sudo tmutil deletelocalsnapshots / >/dev/null 2>&1 || true
-    echo "  스냅샷 ${SNAPS}개 정리 완료"
-    sleep 2
+    tmutil deletelocalsnapshots /System/Volumes/Data >/dev/null 2>&1 || \
+        sudo tmutil deletelocalsnapshots /System/Volumes/Data >/dev/null 2>&1 || true
+    # 날짜 기준으로도 전체 삭제
+    for snap in $(tmutil listlocalsnapshotdates 2>/dev/null | grep -v "^$"); do
+        sudo tmutil deletelocalsnapshots "$snap" >/dev/null 2>&1 || true
+    done
+    echo "  스냅샷 ${TOTAL}개 정리 완료"
+    sleep 3
 else
     echo "  정리할 스냅샷 없음"
 fi
+sudo tmutil enable >/dev/null 2>&1 || true
 
 # 실제 여유 공간 파악.
 # df 는 로컬 Time Machine 스냅샷을 "사용 중"으로 잡아 실제보다 적게 나오므로
@@ -264,7 +275,15 @@ echo ""
 read -r -p "  파티션을 지금 축소할까요? (yes 입력): " SH
 if [ "$SH" = "yes" ]; then
     echo "  로컬 스냅샷 정리 중 (축소 실패 방지)..."
-    tmutil deletelocalsnapshots / 2>/dev/null || true
+    sudo tmutil disable >/dev/null 2>&1 || true
+    tmutil deletelocalsnapshots / 2>/dev/null || \
+        sudo tmutil deletelocalsnapshots / 2>/dev/null || true
+    tmutil deletelocalsnapshots /System/Volumes/Data 2>/dev/null || \
+        sudo tmutil deletelocalsnapshots /System/Volumes/Data 2>/dev/null || true
+    for snap in $(tmutil listlocalsnapshotdates 2>/dev/null | grep -v "^$"); do
+        sudo tmutil deletelocalsnapshots "$snap" >/dev/null 2>&1 || true
+    done
+    sleep 3
     echo "  축소 중 (수 분 소요)..."
     RESIZE_RC=0
     RESIZE_OUT=$(sudo diskutil apfs resizeContainer "$CONT" "${NEW_GB}g" 2>&1) || RESIZE_RC=$?
