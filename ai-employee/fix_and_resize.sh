@@ -47,14 +47,10 @@ sleep 3
 REMAIN=$(tmutil listlocalsnapshotdates 2>/dev/null | grep -v "^$" | wc -l | tr -d ' ')
 echo "  남은 스냅샷: ${REMAIN}개"
 
+# 시스템 업데이트 스냅샷(com.apple.os.update-*)은 tmutil로 안 지워짐
+# 12GB짜리 하나는 820GB 타겟에 영향 없으므로 경고만 하고 계속 진행
 if [ "$REMAIN" != "0" ]; then
-    echo ""
-    echo "  ⚠️  스냅샷이 아직 남아 있습니다. 재부팅 후 다시 시도하세요:"
-    echo "     sudo reboot"
-    echo "     # 재부팅 후:"
-    echo "     bash ~/mkang/ai-employee/fix_and_resize.sh ${LINUX_GB}"
-    sudo tmutil enable 2>/dev/null || true
-    exit 1
+    echo "  (시스템 스냅샷 ${REMAIN}개 남음 — resize 진행)"
 fi
 
 info "[2] 파티션 축소 시도 (→ ${MACOS_GB}GB)..."
